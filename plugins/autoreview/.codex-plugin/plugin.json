@@ -1,0 +1,19 @@
+{
+  "name": "autoreview",
+  "version": "0.0.1",
+  "description": "Automated code review for AI coding agents via review of local changes and diffs",
+  "author": {
+    "name": "Accent Labs Inc."
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Autoreview",
+    "shortDescription": "Automated code review for AI coding agents",
+    "longDescription": "Skills for reviewing local code changes and diffs for correctness, style, convention, and risk issues before committing or opening a pull request.",
+    "developerName": "Accent Labs Inc.",
+    "category": "Productivity",
+    "capabilities": [
+      "Read"
+    ]
+  }
+}

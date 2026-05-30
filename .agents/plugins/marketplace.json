@@ -1,0 +1,20 @@
+{
+  "name": "open-agent-skills",
+  "interface": {
+    "displayName": "Open Agent Skills"
+  },
+  "plugins": [
+    {
+      "name": "autoreview",
+      "source": {
+        "source": "local",
+        "path": "./plugins/autoreview"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_FIRST_USE"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

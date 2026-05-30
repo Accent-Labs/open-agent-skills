@@ -1,0 +1,8 @@
+{
+  "name": "autoreview",
+  "description": "Automated code review for AI coding agents — review local changes and diffs for correctness, style, convention, and risk issues before committing or opening a pull request",
+  "version": "0.0.1",
+  "author": {
+    "name": "Accent Labs Inc."
+  }
+}
