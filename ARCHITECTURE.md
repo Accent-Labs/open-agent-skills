@@ -18,12 +18,28 @@ plugins/
       plugin.json           # Claude Code per-plugin manifest
     .codex-plugin/
       plugin.json           # Codex per-plugin manifest
+    hooks.json              # (optional) Codex plugin hooks — root-level
+    hooks/
+      hooks.json            # (optional) Claude Code plugin hooks
+    scripts/                # (optional) executable helpers a hook/skill invokes
+    agents/
+      <id>.md               # (optional) native subagent definitions
     skills/
       <skill-name>/
         SKILL.md            # The skill document (frontmatter + markdown)
 AGENTS.md                   # AI coding agent entrypoint
 README.md                   # Human-facing project overview
 ```
+
+### Hooks (plugin component)
+
+A plugin may ship lifecycle hooks. Claude Code loads them from `hooks/hooks.json` (a `hooks/`
+subdirectory of the plugin root); OpenAI Codex loads them from a root-level `hooks.json`. Both use
+the same schema (`hooks.<Event>[].matcher` + `hooks[].{type,command}`). A plugin targeting both
+tools ships **both files with identical content**. Hook commands may reference the plugin's install
+dir via `${CLAUDE_PLUGIN_ROOT}` (Claude Code) or `$PLUGIN_ROOT` (Codex); use
+`${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}` to support both. Any runtime a hook shells out to (e.g.
+`python3`) must be treated as optional — fail open if it is absent.
 
 ## Supported Agents
 
@@ -127,11 +143,20 @@ description: <trigger text> # Multi-sentence description of when a coding tool s
 
 ### `autoreview`
 
-Automated code review for AI coding agents.
+A deterministic pre-commit review gate. A `PreToolUse` hook on `git commit` runs a zero-LLM Python
+gate (`scripts/gate.py`, behind the fail-open `scripts/gate.sh` wrapper) over the staged change.
+Trivial changes pass silently; non-trivial, sensitive, or hand-resolved-merge changes are blocked
+(exit 2) with a directive to run the `autoreview` skill, which spawns parallel reviewers from
+`agents/*.md` and lets the agent address findings before re-committing. A content-keyed pass-marker
+(in the repo's git dir, never committed) records that review ran. The gate requires `python3`
+(ships with macOS/Linux) and fails open if it is absent.
 
-| Skill | Covers |
+| Component | Purpose |
 |---|---|
-| `autoreview` | _Stub — content in progress._ Review of working-tree or staged changes for correctness, style, convention, and risk issues before a commit or pull request |
+| `scripts/` | `gate.py` (gate + `mark`), `gitcmd.py`/`diffparse.py`/`classify.py`/`markers.py`/`tools.py`/`core.py`/`cli.py` package, `gate.sh` wrapper, `detect_tool.py`, `tests/` |
+| `hooks.json` + `hooks/hooks.json` | `PreToolUse → Bash` wiring (Codex + Claude Code) |
+| `agents/{correctness,security,conventions}.md` | Claude-native subagent reviewers, reused inline on other tools |
+| `skills/autoreview/SKILL.md` | Orchestration: detect tool, spawn reviewers, aggregate verdict, dispute loop, marker + re-commit |
 
 ## Adding a Plugin
 
