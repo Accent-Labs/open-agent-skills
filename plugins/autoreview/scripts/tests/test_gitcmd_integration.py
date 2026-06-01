@@ -60,6 +60,21 @@ class TestGit(unittest.TestCase):
         self.assertEqual(g.detect_state(), "merge")
         self.assertFalse(g.merge_needs_review())  # clean merge -> no hand resolution -> no review
 
+    def test_merge_with_staged_conflict_markers_is_reviewed(self):
+        d, run = mkrepo()
+        run("checkout", "-q", "-b", "feature")
+        open(os.path.join(d, "c.txt"), "w").write("feature\n"); run("add", "c.txt"); run("commit", "-q", "-m", "f")
+        run("checkout", "-q", "main")
+        open(os.path.join(d, "c.txt"), "w").write("main\n"); run("add", "c.txt"); run("commit", "-q", "-m", "m")
+        try:
+            run("merge", "-q", "feature")
+        except subprocess.CalledProcessError:
+            pass
+        run("add", "c.txt")  # stage the conflicted file WITH markers intact (index == AUTO_MERGE)
+        g = Git(d)
+        self.assertEqual(g.detect_state(), "merge")
+        self.assertTrue(g.merge_needs_review())  # leftover conflict markers -> must review
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -43,6 +43,28 @@ class TestFlags(unittest.TestCase):
         self.assertTrue(d.parse_commit_flags(['--pathspec-from-file=paths.txt']).pathspec)
         self.assertTrue(d.parse_commit_flags(['--pathspec-from-file', 'paths.txt']).pathspec)
         self.assertTrue(d.parse_commit_flags(['--pathspec-from-file', 'paths.txt', '-m', 'x']).pathspec)
+        # optional-value short flags (-u/-S) must NOT be misread as -n (no-verify)
+        self.assertFalse(d.parse_commit_flags(['-uno', '-m', 'x']).no_verify)
+        self.assertFalse(d.parse_commit_flags(['-Sno', '-m', 'x']).no_verify)
+        self.assertTrue(d.parse_commit_flags(['-u', '-n']).no_verify)  # separate -n still works
+        # interactive modes (commit selected non-staged hunks)
+        self.assertTrue(d.parse_commit_flags(['-p']).interactive)
+        self.assertTrue(d.parse_commit_flags(['--patch']).interactive)
+        self.assertTrue(d.parse_commit_flags(['--interactive']).interactive)
+
+
+class TestScan(unittest.TestCase):
+    def test_scan_commits_and_mutator(self):
+        commits, mut = d.scan_commits('git add x && git commit -m y')
+        self.assertEqual(commits, [['-m', 'y']])
+        self.assertTrue(mut)  # `git add` is an index mutator
+        commits, mut = d.scan_commits('git commit -m a && git commit -am b')
+        self.assertEqual(len(commits), 2)
+        self.assertFalse(mut)
+        commits, mut = d.scan_commits('env FOO=bar git commit -m y')  # env-wrapped
+        self.assertEqual(commits, [['-m', 'y']])
+        self.assertEqual(d.scan_commits('command git commit')[0], [[]])  # wrapper-stripped
+        self.assertEqual(d.scan_commits('echo hi && ls')[0], [])  # no git commit
 
 
 class TestNumstat(unittest.TestCase):

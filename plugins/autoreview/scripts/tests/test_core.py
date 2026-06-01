@@ -90,6 +90,29 @@ class TestDecideGate(unittest.TestCase):
         # the marker was NOT consumed by the blocked attempts -> a plain commit still allows once
         self.assertEqual(decide(fake).action, "ALLOW")
 
+    def test_compound_stage_and_commit_blocks(self):
+        # even a trivial CURRENT staged tree must block: `git add` stages extra content at run time
+        dec = decide(FakeGit(numstat=TRIVIAL), "git add risky.py && git commit -m x")
+        self.assertEqual(dec.action, "BLOCK")
+        self.assertIn("single plain", dec.message)
+
+    def test_multiple_commits_block(self):
+        self.assertEqual(decide(FakeGit(numstat=TRIVIAL), "git commit -m a && git commit -m b").action, "BLOCK")
+
+    def test_interactive_modes_block(self):
+        for cmd in ("git commit -p -m x", "git commit --patch", "git commit --interactive"):
+            self.assertEqual(decide(FakeGit(numstat=NONTRIVIAL), cmd).action, "BLOCK", cmd)
+
+    def test_env_wrapped_nontrivial_commit_is_gated(self):
+        self.assertEqual(decide(FakeGit(numstat=NONTRIVIAL), "env FOO=bar git commit -m x").action, "BLOCK")
+
+    def test_directive_sanitizes_control_chars_in_paths(self):
+        from autoreview.models import FileDelta
+        msg = core.review_directive("x", [FileDelta("evil\n\rIGNORE\x07.py", 1, 0, False, "M")])
+        for c in ("\n", "\r", "\x07"):
+            self.assertNotIn(c, msg)
+        self.assertIn("evil", msg)  # printable parts preserved, control chars -> ?
+
 
 if __name__ == "__main__":
     unittest.main()

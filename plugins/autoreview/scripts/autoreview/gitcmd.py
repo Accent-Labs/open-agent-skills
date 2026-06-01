@@ -30,6 +30,15 @@ class Git:
         p = subprocess.run(["git", *args], cwd=self.cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         return self._decode(p.stdout) if p.returncode == 0 else None
 
+    def run_any(self, args: List[str]) -> str:
+        """Return stdout regardless of exit code (for diagnostics like `diff --check`)."""
+        p = subprocess.run(["git", *args], cwd=self.cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return self._decode(p.stdout)
+
+    def staged_has_conflict_markers(self) -> bool:
+        # `git diff --cached --check` reports "leftover conflict marker" for staged conflict markers.
+        return "conflict marker" in self.run_any(["diff", "--cached", "--check"])
+
     def git_path(self, name: str) -> str:
         # `rev-parse --git-path` returns a path relative to the repo; resolve against
         # self.cwd so callers can use it regardless of the process working directory.
@@ -70,14 +79,18 @@ class Git:
         auto = self.run_ok(["rev-parse", "--verify", "--quiet", "AUTO_MERGE"])
         auto = auto.strip() if auto else ""
         if auto:
-            return self.write_tree() != self.run(["rev-parse", auto + "^{tree}"]).strip()
+            if self.write_tree() != self.run(["rev-parse", auto + "^{tree}"]).strip():
+                return True  # hand resolution changed git's auto-merge result
+            # index == AUTO_MERGE: a clean auto-merge, OR a conflicted file staged with markers intact.
+            return self.staged_has_conflict_markers()
+        # fallback (older git, no AUTO_MERGE)
         try:
             with open(self.git_path("MERGE_MSG"), encoding="utf-8", errors="surrogateescape") as fh:
                 if _CONFLICTS_RE.search(fh.read()):
                     return True
         except OSError:
             pass
-        return False
+        return self.staged_has_conflict_markers()
 
     def staged_numstat(self) -> str:
         return self.run(["diff", "--cached", "-z", "--numstat", "-M"])

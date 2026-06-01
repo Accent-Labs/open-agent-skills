@@ -37,6 +37,19 @@ class TestMarkers(unittest.TestCase):
         d = tempfile.mkdtemp()
         self.assertNotIn(":", os.path.basename(m.marker_path(d, "aaa:bbb:ccc")))
 
+    def test_semantically_corrupt_payload_fails_closed(self):
+        d = tempfile.mkdtemp()
+        f1 = m.marker_path(d, "badcreated")
+        with open(f1, "w") as fh:
+            fh.write(json.dumps({"version": m.MARKER_VERSION, "created": "not-a-number"}))
+        self.assertEqual(m.read(f1), "invalid")  # not fail-open
+        self.assertTrue(os.path.exists(f1 + ".invalid"))
+        f2 = m.marker_path(d, "notdict")
+        with open(f2, "w") as fh:
+            fh.write(json.dumps([1, 2, 3]))  # valid JSON, not an object
+        self.assertEqual(m.read(f2), "invalid")
+        self.assertTrue(os.path.exists(f2 + ".invalid"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -53,7 +53,7 @@ def main(argv=None) -> None:
         sys.stderr.write(decision.message + "\n")
         sys.exit(2)
     cmd = (inp.get("tool_input") or {}).get("command", "") or ""
-    commit_args = diffparse.find_git_commit(cmd)
-    if commit_args is not None and diffparse.parse_commit_flags(commit_args).no_verify:
+    commits, _ = diffparse.scan_commits(cmd)
+    if any(diffparse.parse_commit_flags(a).no_verify for a in commits):
         _warn("commit uses --no-verify; autoreview bypassed")
     sys.exit(0)

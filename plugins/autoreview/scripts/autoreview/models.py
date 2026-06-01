@@ -20,6 +20,7 @@ class Flags(NamedTuple):
     amend: bool = False
     no_verify: bool = False
     pathspec: bool = False
+    interactive: bool = False   # -p / --patch / --interactive (commits selected non-staged hunks)
 
 
 class Classification(NamedTuple):
