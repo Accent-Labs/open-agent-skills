@@ -9,8 +9,10 @@ Each plugin groups one or more **skills** — self-contained reference documents
 | Agent | Status | Discovery |
 |---|---|---|
 | Claude Code | Supported | Reads `.claude-plugin/marketplace.json` and each plugin's `.claude-plugin/plugin.json` |
-| OpenAI Codex | Supported | Reads `.agents/plugins/marketplace.json` and each plugin's `.codex-plugin/plugin.json` |
+| OpenAI Codex | Supported¹ | Reads `.agents/plugins/marketplace.json` and each plugin's `.codex-plugin/plugin.json` |
 | Gemini CLI | Planned | Discovery format TBD |
+
+¹ Codex skill discovery is supported; the `autoreview` plugin's Codex **pre-commit hook** is **experimental** (pending live validation — see the autoreview section).
 
 The repository is intentionally structured so that adding a new agent means adding a new entrypoint or registry — not forking the underlying skill content.
 
