@@ -21,6 +21,13 @@ class TestClassify(unittest.TestCase):
         self.assertEqual(classify([fd("src/a.js", 5, 4)]).action, "SKIP")
         self.assertEqual(classify([fd("src/a.js", 30)]).action, "REVIEW")
 
+    def test_rename_away_from_sensitive_is_reviewed(self):
+        # rename a dependency manifest / auth path to a non-sensitive destination -> still REVIEW
+        self.assertEqual(
+            classify([FileDelta("renamed.txt", 0, 0, False, "R", "package-lock.json")]).action, "REVIEW")
+        self.assertEqual(
+            classify([FileDelta("docs/x.md", 1, 0, False, "R", "src/auth/login.py")]).action, "REVIEW")
+
 
 if __name__ == "__main__":
     unittest.main()

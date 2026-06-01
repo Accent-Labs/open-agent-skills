@@ -76,6 +76,20 @@ class TestDecideGate(unittest.TestCase):
         self.assertEqual(decide(fake).action, "ALLOW")  # marker honored + consumed
         self.assertEqual(decide(fake).action, "BLOCK")  # consumed -> blocked again
 
+    def test_marker_does_not_authorize_unsupported_modes(self):
+        # A valid marker for the staged tree must NOT let an unsupported mode through (those commit
+        # content that differs from the reviewed tree). Unsupported is decided before marker lookup.
+        fake = FakeGit(numstat=NONTRIVIAL, identity="c" * 40)
+        mdir = markers.marker_dir(fake)
+        markers.write(markers.marker_path(mdir, fake._identity), {"verdict": "PASS"})
+        for cmd in ("git commit -am x", "git commit --amend",
+                    "git commit --pathspec-from-file=p.txt -m x"):
+            dec = decide(fake, cmd)
+            self.assertEqual(dec.action, "BLOCK", cmd)
+            self.assertIn("plain staged commits", dec.message)
+        # the marker was NOT consumed by the blocked attempts -> a plain commit still allows once
+        self.assertEqual(decide(fake).action, "ALLOW")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -39,6 +39,10 @@ class TestFlags(unittest.TestCase):
         self.assertTrue(d.parse_commit_flags(['-m', 'x', 'src/foo.js']).pathspec)
         self.assertFalse(d.parse_commit_flags(['-m', 'commit']).pathspec)
         self.assertTrue(d.parse_commit_flags(['--', 'file.txt']).pathspec)
+        # --pathspec-from-file commits the listed files -> pathspec (unsupported), both forms
+        self.assertTrue(d.parse_commit_flags(['--pathspec-from-file=paths.txt']).pathspec)
+        self.assertTrue(d.parse_commit_flags(['--pathspec-from-file', 'paths.txt']).pathspec)
+        self.assertTrue(d.parse_commit_flags(['--pathspec-from-file', 'paths.txt', '-m', 'x']).pathspec)
 
 
 class TestNumstat(unittest.TestCase):

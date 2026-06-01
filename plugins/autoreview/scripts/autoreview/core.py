@@ -44,6 +44,14 @@ def decide_gate(inp: dict, git_factory=Git) -> Decision:
     if state in ("cherry-pick", "revert", "rebase"):
         return Decision(ALLOW)
 
+    # Explicit bypass and unsupported modes are decided BEFORE any marker lookup, so a marker
+    # written for the staged tree can never authorize a command whose effective commit content
+    # differs from that tree (e.g. -a/-am stage extra tracked files at commit time).
+    if flags.no_verify:
+        return Decision(ALLOW)  # bypass (cli logs the warning)
+    if flags.all or flags.amend or flags.pathspec:
+        return Decision(BLOCK, UNSUPPORTED_DIRECTIVE)
+
     merge_forces = False
     if state == "merge":
         try:
@@ -59,10 +67,6 @@ def decide_gate(inp: dict, git_factory=Git) -> Decision:
         markers.consume(mpath)
         return Decision(ALLOW)
 
-    if flags.no_verify:
-        return Decision(ALLOW)  # bypass (cli logs the warning)
-    if flags.all or flags.amend or flags.pathspec:
-        return Decision(BLOCK, UNSUPPORTED_DIRECTIVE)
     if state == "merge" and merge_forces:
         return Decision(BLOCK, review_directive("merge conflict resolution", None))
 

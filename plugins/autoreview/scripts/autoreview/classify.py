@@ -24,10 +24,16 @@ def _any(patterns, path: str) -> bool:
     return any(rx.search(path) for rx in patterns)
 
 
+def _both_paths(f: FileDelta):
+    return (f.path, f.old_path) if f.old_path else (f.path,)
+
+
 def classify(files: List[FileDelta], threshold: int = 20) -> Classification:
     if not files:
         return Classification(SKIP, "empty diff")
-    sensitive = lambda f: _any(_SENSITIVE, f.path) or _any(_DEP, f.path)  # noqa: E731
+    # Sensitive/dependency checks consider BOTH paths so a rename away from (or to) a
+    # sensitive path is still reviewed.
+    sensitive = lambda f: any(_any(_SENSITIVE, p) or _any(_DEP, p) for p in _both_paths(f))  # noqa: E731
     generated = lambda f: _any(_GENERATED, f.path)  # noqa: E731
     doc = lambda f: _any(_DOC, f.path)  # noqa: E731
     if any(sensitive(f) for f in files):

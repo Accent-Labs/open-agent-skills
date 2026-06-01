@@ -119,8 +119,9 @@ def find_git_commit(command: str) -> Optional[List[str]]:
 
 COMMIT_LONG_VALUE_OPTS = {
     "--message", "--file", "--author", "--date", "--template",
-    "--reuse-message", "--reedit-message", "--fixup", "--squash", "--cleanup", "--pathspec-from-file",
+    "--reuse-message", "--reedit-message", "--fixup", "--squash", "--cleanup",
 }
+# `--pathspec-from-file` is handled explicitly (it commits the listed files, like a pathspec).
 COMMIT_SHORT_VALUE_CHARS = "mFCct"
 
 
@@ -146,6 +147,10 @@ def parse_commit_flags(arg_tokens: List[str]) -> Flags:
                 amend = True
             elif name == "--no-verify":
                 no_verify = True
+            elif name == "--pathspec-from-file":
+                pathspec = True  # commits the files listed in the file, not just the staged tree
+                if "=" not in t:
+                    i += 1  # consume the path-file value
             elif name in COMMIT_LONG_VALUE_OPTS and "=" not in t:
                 i += 1
             i += 1
