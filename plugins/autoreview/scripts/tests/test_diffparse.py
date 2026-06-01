@@ -51,6 +51,15 @@ class TestNumstat(unittest.TestCase):
                          [FileDelta('new.js', 5, 0, False, 'R', 'old.js')])
         self.assertEqual(d.parse_numstat_z(''), [])
 
+    def test_non_utf8_and_space_paths(self):
+        weird = b"caf\xe9.txt".decode("utf-8", "surrogateescape")  # non-UTF-8 byte via surrogateescape
+        self.assertEqual(d.parse_numstat_z("1\t0\t%s\0" % weird), [FileDelta(weird, 1, 0, False, "M")])
+        self.assertEqual(d.parse_numstat_z("2\t1\tsrc/a b.js\0"),
+                         [FileDelta("src/a b.js", 2, 1, False, "M")])
+
+    def test_truncated_rename_record_is_safe(self):
+        self.assertEqual(d.parse_numstat_z("5\t0\t\0old.js"), [])  # missing newpath -> drop, no crash
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -9,7 +9,7 @@
   "interface": {
     "displayName": "Autoreview",
     "shortDescription": "Pre-commit review gate for AI coding agents",
-    "longDescription": "A PreToolUse hook intercepts git commit and runs a deterministic, zero-LLM gate over the staged change. Trivial changes pass silently; non-trivial, sensitive, or hand-resolved-merge changes are blocked with a directive to run the autoreview skill, which spawns parallel reviewers (correctness, security, conventions), aggregates a verdict, and lets the agent address findings before re-committing. The gate runs on python3 (ships with macOS/Linux) and fails open if absent.",
+    "longDescription": "A PreToolUse hook intercepts git commit and runs a deterministic, zero-LLM gate over the staged change. Trivial changes pass silently; non-trivial, sensitive, or hand-resolved-merge changes are blocked with a directive to run the autoreview skill, which spawns parallel reviewers (correctness, security, conventions), aggregates a verdict, and lets the agent address findings before re-committing. The gate runs on python3 (ships with macOS/Linux) and fails open if absent. Codex support is EXPERIMENTAL: the hook contract and inline-reviewer spawn path are pending live validation; the gate fails open, so the worst case on Codex is no gate, never a false block.",
     "developerName": "Accent Labs Inc.",
     "category": "Productivity",
     "capabilities": [

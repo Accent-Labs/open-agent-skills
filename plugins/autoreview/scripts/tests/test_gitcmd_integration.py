@@ -45,6 +45,21 @@ class TestGit(unittest.TestCase):
         self.assertEqual(g.detect_state(), "merge")
         self.assertTrue(g.merge_needs_review())
 
+    def test_clean_merge_does_not_force_review(self):
+        d, run = mkrepo()
+        open(os.path.join(d, "base.txt"), "w").write("base\n"); run("add", "base.txt"); run("commit", "-q", "-m", "base")
+        run("checkout", "-q", "-b", "feature")
+        open(os.path.join(d, "f.txt"), "w").write("feature\n"); run("add", "f.txt"); run("commit", "-q", "-m", "f")
+        run("checkout", "-q", "main")
+        open(os.path.join(d, "m.txt"), "w").write("main\n"); run("add", "m.txt"); run("commit", "-q", "-m", "m")
+        try:
+            run("merge", "--no-commit", "--no-ff", "feature")  # non-conflicting; pause before commit
+        except subprocess.CalledProcessError:
+            pass
+        g = Git(d)
+        self.assertEqual(g.detect_state(), "merge")
+        self.assertFalse(g.merge_needs_review())  # clean merge -> no hand resolution -> no review
+
 
 if __name__ == "__main__":
     unittest.main()

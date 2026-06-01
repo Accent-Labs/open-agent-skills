@@ -7,7 +7,9 @@ description: Use this skill to review staged code changes before a commit when t
 
 Review the staged change from multiple perspectives, address real defects, then let the commit proceed.
 
-This skill is normally triggered by the autoreview gate: a `PreToolUse` hook blocked your `git commit` (exit 2) with a directive to run autoreview. Follow these steps exactly. `${ROOT}` below means `${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}` (this plugin's install dir).
+This skill is normally triggered by the autoreview gate: a `PreToolUse` hook blocked your `git commit` (exit 2) with a directive to run autoreview. Follow these steps exactly.
+
+**Resolve `${ROOT}` (this plugin's install dir) before running any command below**, in this order: (1) the absolute path printed in the gate's directive (`autoreview plugin dir: <path>`); (2) `${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}` if either env var is set; (3) the directory two levels above this `SKILL.md` (i.e. `skills/autoreview/` → `../../`). Use whichever resolves to a real directory containing `scripts/gate.py`. Never run `python3 "/scripts/..."` with an empty `${ROOT}`.
 
 ---
 

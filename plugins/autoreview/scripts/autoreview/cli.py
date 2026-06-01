@@ -2,14 +2,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import sys
-from . import markers
+from . import diffparse, markers
 from .core import decide_gate
 from .gitcmd import Git
 from .models import BLOCK
-
-_NO_VERIFY_RE = re.compile(r"(^|\s)(--no-verify|-[A-Za-z]*n)(\s|$)")
 
 
 def _warn(msg: str) -> None:
@@ -56,6 +53,7 @@ def main(argv=None) -> None:
         sys.stderr.write(decision.message + "\n")
         sys.exit(2)
     cmd = (inp.get("tool_input") or {}).get("command", "") or ""
-    if _NO_VERIFY_RE.search(cmd):
+    commit_args = diffparse.find_git_commit(cmd)
+    if commit_args is not None and diffparse.parse_commit_flags(commit_args).no_verify:
         _warn("commit uses --no-verify; autoreview bypassed")
     sys.exit(0)

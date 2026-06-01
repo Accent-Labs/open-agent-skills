@@ -4,7 +4,8 @@ import os
 def w(d, rel, content):
     p = os.path.join(d, rel)
     os.makedirs(os.path.dirname(p), exist_ok=True)
-    open(p, "w").write(content)
+    with open(p, "w") as fh:
+        fh.write(content)
 
 
 def trivial(d, g):
@@ -40,7 +41,8 @@ def amp(d, g):
 def dasha(d, g):
     w(d, "src/a.js", "x\n" * 40)
     g("add", "src/a.js")
-    open(os.path.join(d, "src/a.js"), "a").write("y\n")
+    with open(os.path.join(d, "src/a.js"), "a") as fh:
+        fh.write("y\n")
 
 
 def amend(d, g):
@@ -54,7 +56,8 @@ def noverify(d, g):
 
 
 def cherry(d, g):
-    open(os.path.join(d, ".git", "CHERRY_PICK_HEAD"), "w").write("dead\n")
+    with open(os.path.join(d, ".git", "CHERRY_PICK_HEAD"), "w") as fh:
+        fh.write("dead\n")
     w(d, "src/a.js", "x\n" * 40)
     g("add", "src/a.js")
 

@@ -22,20 +22,25 @@ def new_repo():
     return d, g
 
 
+def _put(d, content):
+    with open(os.path.join(d, "c.txt"), "w") as fh:
+        fh.write(content)
+
+
 def build_merge(d, g):
     g("checkout", "-q", "-b", "feature")
-    open(os.path.join(d, "c.txt"), "w").write("feature\n")
+    _put(d, "feature\n")
     g("add", "c.txt")
     g("commit", "-q", "-m", "f")
     g("checkout", "-q", "main")
-    open(os.path.join(d, "c.txt"), "w").write("main\n")
+    _put(d, "main\n")
     g("add", "c.txt")
     g("commit", "-q", "-m", "m")
     try:
         g("merge", "-q", "feature")
     except subprocess.CalledProcessError:
         pass
-    open(os.path.join(d, "c.txt"), "w").write("hand\n")
+    _put(d, "hand\n")
     g("add", "c.txt")
 
 

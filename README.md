@@ -31,7 +31,9 @@ See `ARCHITECTURE.md` for the plugin and skill format conventions.
 
 ### `autoreview`
 
-A deterministic pre-commit review gate. A git-commit hook runs a fast, zero-LLM check over the staged change and, for non-trivial / sensitive / hand-resolved-merge changes, blocks the commit and asks the agent to run a multi-perspective review (correctness, security, conventions) before re-committing. Trivial changes (docs, lockfiles, small diffs) pass silently. Install and you're done — no setup beyond `python3`, which ships with macOS and Linux (the gate fails open if it is missing).
+A deterministic pre-commit review gate. A git-commit hook runs a fast, zero-LLM check over the staged change and, for non-trivial / sensitive / hand-resolved-merge changes, blocks the commit and asks the agent to run a multi-perspective review (correctness, security, conventions) before re-committing. Truly trivial changes (docs, small diffs) pass silently; sensitive changes — dependency manifests and lockfiles, CI, Dockerfiles, migrations, auth/security paths — always get reviewed even when small. Install and you're done — no setup beyond `python3`, which ships with macOS and Linux (the gate fails open if it is missing).
+
+**Validation status:** the hook contract is validated live on **Claude Code** (the hook fires, blocks risky commits, and feeds the directive back to the agent). **OpenAI Codex** support is **experimental** — the plugin ships a Codex hook, but the Codex hook contract and the inline-reviewer spawn path are pending live validation (see `plugins/autoreview/SPIKES.md`). The gate fails open, so on an unvalidated tool the worst case is "no gate," never a false block.
 
 | Component | Description |
 |---|---|

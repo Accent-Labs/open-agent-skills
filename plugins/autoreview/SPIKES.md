@@ -66,8 +66,14 @@ against a temp repo with a 40-line staged file:
   plugin (the gate ran from the plugin dir). Also confirmed the hook MECHANISM independently via a
   project `.claude/settings.json` hook pointing at an absolute `gate.sh`.
 
-## Still pending
+## Still pending (Codex marked EXPERIMENTAL in README + manifest until validated)
 
 - Codex: confirm root-level `hooks.json` loads + the exit-2/stderr contract under `codex exec`.
-- 0.5 tool detection + plugin-root from the SKILL (main-agent) context (both tools).
 - 0.6 spawn paths — Claude Code native `agents/<id>.md` by name; Codex/generic inline worker.
+
+## Mitigated
+
+- 0.5 plugin-root in the SKILL context: the gate's review directive now embeds the absolute plugin
+  dir (computed from `core.py`'s own location), and `SKILL.md` resolves `${ROOT}` from that directive
+  first, then env vars, then `../../` relative to `SKILL.md` — so the skill never depends on
+  `$CLAUDE_PLUGIN_ROOT`/`$PLUGIN_ROOT` being set in its context.

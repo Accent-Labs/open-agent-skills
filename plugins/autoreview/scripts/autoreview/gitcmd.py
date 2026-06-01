@@ -38,9 +38,12 @@ class Git:
 
     def detect_state(self) -> str:
         def has(name: str) -> bool:
+            # Only an expected git failure (e.g. not yet a repo) is tolerated here; any other
+            # exception propagates to the CLI fail-open boundary (which warns) rather than being
+            # silently masked as state="normal".
             try:
                 return os.path.exists(self.git_path(name))
-            except Exception:
+            except subprocess.CalledProcessError:
                 return False
         if has("MERGE_HEAD"):
             return "merge"

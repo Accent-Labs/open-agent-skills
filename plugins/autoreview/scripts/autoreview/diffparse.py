@@ -199,6 +199,8 @@ def parse_numstat_z(buf: str) -> List[FileDelta]:
         deleted = 0 if binary else _to_int(tab[1])
         path_field = "\t".join(tab[2:])
         if path_field == "":
+            if k + 2 >= len(parts):
+                break  # truncated rename record (real git never emits this); stop safely
             out.append(FileDelta(parts[k + 2], added, deleted, binary, "R", parts[k + 1]))
             k += 3
         else:

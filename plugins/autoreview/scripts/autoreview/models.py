@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import List, NamedTuple, Optional
+from typing import NamedTuple, Optional
 
 # action vocabularies
 ALLOW, BLOCK = "ALLOW", "BLOCK"

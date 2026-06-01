@@ -6,6 +6,10 @@ from .classify import classify
 from .gitcmd import Git
 from .models import Decision, FileDelta, ALLOW, BLOCK, SKIP
 
+# Absolute install dir of this plugin (…/plugins/autoreview), derived from this file's location so
+# the skill can locate scripts/ even if $CLAUDE_PLUGIN_ROOT/$PLUGIN_ROOT are unset in its context.
+PLUGIN_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 UNSUPPORTED_DIRECTIVE = (
     "Autoreview supports plain staged commits only. Stage your changes explicitly (`git add ...`) "
     "and run a plain `git commit`; do not use -a/-am/--amend/<pathspec>. "
@@ -21,7 +25,8 @@ def review_directive(reason: str, files: Optional[List[FileDelta]]) -> str:
         stats = ""
     return (f"Autoreview required ({reason}). Invoke the `autoreview` skill now: review the staged "
             f"change with the configured reviewers, address or dispute findings, then re-commit. "
-            f"{stats}").strip()
+            f"{stats}(autoreview plugin dir: {PLUGIN_ROOT} — use this as ROOT for scripts/ if "
+            f"$CLAUDE_PLUGIN_ROOT/$PLUGIN_ROOT are unset.)").strip()
 
 
 def decide_gate(inp: dict, git_factory=Git) -> Decision:
