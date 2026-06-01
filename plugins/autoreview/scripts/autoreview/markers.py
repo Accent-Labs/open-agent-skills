@@ -4,8 +4,9 @@ import os
 import re
 import tempfile
 import time
+from .schema import validate_marker_payload
 
-MARKER_VERSION = "1"
+MARKER_VERSION = "2"
 EXPIRY_MS = 7 * 24 * 60 * 60 * 1000
 
 
@@ -42,6 +43,7 @@ def read(path: str) -> str:
             raise ValueError("marker 'created' is not a number")
         if _now_ms() - created > EXPIRY_MS:
             return "invalid"
+        validate_marker_payload(data)
         return "valid"
     except FileNotFoundError:
         return "none"
@@ -54,6 +56,7 @@ def read(path: str) -> str:
 
 
 def write(path: str, payload: dict) -> None:
+    validate_marker_payload(payload)
     body = dict(payload)
     body["version"] = MARKER_VERSION
     body["created"] = _now_ms()

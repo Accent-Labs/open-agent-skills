@@ -18,12 +18,12 @@ plugins/
       plugin.json           # Claude Code per-plugin manifest
     .codex-plugin/
       plugin.json           # Codex per-plugin manifest
-    hooks.json              # (optional) Codex plugin hooks — root-level
+    hooks.json              # (optional) compatibility copy of plugin hooks
     hooks/
-      hooks.json            # (optional) Claude Code plugin hooks
+      hooks.json            # (optional) primary plugin hooks
     scripts/                # (optional) executable helpers a hook/skill invokes
     agents/
-      <id>.md               # (optional) native subagent definitions
+      <id>.md               # (optional) provider-neutral reviewer profiles
     skills/
       <skill-name>/
         SKILL.md            # The skill document (frontmatter + markdown)
@@ -33,13 +33,11 @@ README.md                   # Human-facing project overview
 
 ### Hooks (plugin component)
 
-A plugin may ship lifecycle hooks. Claude Code loads them from `hooks/hooks.json` (a `hooks/`
-subdirectory of the plugin root); OpenAI Codex loads them from a root-level `hooks.json`. Both use
-the same schema (`hooks.<Event>[].matcher` + `hooks[].{type,command}`). A plugin targeting both
-tools ships **both files with identical content**. Hook commands may reference the plugin's install
-dir via `${CLAUDE_PLUGIN_ROOT}` (Claude Code) or `$PLUGIN_ROOT` (Codex); use
-`${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}` to support both. Any runtime a hook shells out to (e.g.
-`python3`) must be treated as optional — fail open if it is absent.
+A plugin may ship lifecycle hooks. The primary hook file is `hooks/hooks.json`; plugins may also
+ship a root-level `hooks.json` compatibility copy when targeting hosts that have used that location.
+When both files exist they must stay byte-identical. Hook commands should resolve the plugin install
+directory through host-provided plugin-root environment variables with a relative fallback. Any
+runtime a hook shells out to, such as `python3`, must be treated as optional and fail open if absent.
 
 ## Supported Agents
 
@@ -96,6 +94,7 @@ Claude Code resolves marketplace plugins in `strict` mode by default, which expe
 | `name`, `version`, `description` | Required package identity metadata |
 | `author` | Publisher metadata |
 | `skills` | Relative path to the skill directory; currently always `./skills/` |
+| `hooks` | Optional relative path to the primary hooks file, such as `./hooks/hooks.json` |
 | `interface` | Codex install-surface display metadata |
 
 Every registry and manifest should list the same plugins in the same order unless a tool-specific compatibility issue requires an exception.
@@ -146,17 +145,18 @@ description: <trigger text> # Multi-sentence description of when a coding tool s
 A deterministic pre-commit review gate. A `PreToolUse` hook on `git commit` runs a zero-LLM Python
 gate (`scripts/gate.py`, behind the fail-open `scripts/gate.sh` wrapper) over the staged change.
 Trivial changes pass silently; non-trivial, sensitive, or hand-resolved-merge changes are blocked
-(exit 2) with a directive to run the `autoreview` skill, which spawns parallel reviewers from
-`agents/*.md` and lets the agent address findings before re-committing. A content-keyed pass-marker
-(in the repo's git dir, never committed) records that review ran. The gate requires `python3`
-(ships with macOS/Linux) and fails open if it is absent.
+(exit 2) with a directive to run the `autoreview` skill. The skill launches provider-neutral
+reviewer profiles from `agents/*.md`, requires strict JSON outcomes, and lets the agent address
+blocking feedback before re-committing. A content-keyed pass-marker in the repo's git dir, never
+committed, records only approved or non-blocking reviewed outcomes. The gate requires `python3` and
+fails open if it is absent.
 
 | Component | Purpose |
 |---|---|
-| `scripts/` | `gate.py` (gate + `mark`), `gitcmd.py`/`diffparse.py`/`classify.py`/`markers.py`/`tools.py`/`core.py`/`cli.py` package, `gate.sh` wrapper, `detect_tool.py`, `tests/` |
-| `hooks.json` + `hooks/hooks.json` | `PreToolUse → Bash` wiring (Codex + Claude Code) |
-| `agents/{correctness,security,conventions}.md` | Claude-native subagent reviewers, reused inline on other tools |
-| `skills/autoreview/SKILL.md` | Orchestration: detect tool, spawn reviewers, aggregate verdict, dispute loop, marker + re-commit |
+| `scripts/` | `gate.py` (gate + `mark`), `gitcmd.py`/`diffparse.py`/`classify.py`/`markers.py`/`schema.py`/`core.py`/`cli.py` package, `gate.sh` wrapper, tests |
+| `hooks.json` + `hooks/hooks.json` | `PreToolUse -> Bash` wiring kept byte-identical for host compatibility |
+| `agents/{correctness,security,conventions}.md` | Provider-neutral reviewer profiles that return strict JSON |
+| `skills/autoreview/SKILL.md` | Orchestration: gather staged context, launch reviewers, aggregate outcomes, resolve feedback, marker + re-commit |
 
 ## Adding a Plugin
 

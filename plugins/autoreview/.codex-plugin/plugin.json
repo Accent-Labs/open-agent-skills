@@ -1,15 +1,16 @@
 {
   "name": "autoreview",
   "version": "0.1.0",
-  "description": "Deterministic pre-commit review gate for AI coding agents — intercepts git commit and triggers a multi-perspective review of risky staged changes before the commit proceeds. Requires python3.",
+  "description": "Deterministic pre-commit review gate for AI coding agents - intercepts git commit and triggers a structured multi-reviewer pass for risky staged changes. Requires python3.",
   "author": {
     "name": "Accent Labs Inc."
   },
   "skills": "./skills/",
+  "hooks": "./hooks/hooks.json",
   "interface": {
     "displayName": "Autoreview",
     "shortDescription": "Pre-commit review gate for AI coding agents",
-    "longDescription": "A PreToolUse hook intercepts git commit and runs a deterministic, zero-LLM gate over the staged change. Trivial changes pass silently; non-trivial, sensitive, or hand-resolved-merge changes are blocked with a directive to run the autoreview skill, which spawns parallel reviewers (correctness, security, conventions), aggregates a verdict, and lets the agent address findings before re-committing. The gate runs on python3 (ships with macOS/Linux) and fails open if absent. Codex support is EXPERIMENTAL: the hook contract and inline-reviewer spawn path are pending live validation; the gate fails open, so the worst case on Codex is no gate, never a false block.",
+    "longDescription": "A PreToolUse hook intercepts git commit and runs a deterministic, zero-LLM gate over the staged change. Trivial changes pass silently; non-trivial, sensitive, or hand-resolved-merge changes are blocked with a directive to run the autoreview skill. The skill launches provider-neutral reviewer profiles (correctness, security, conventions), requires strict JSON outcomes, and writes a content-keyed marker only for approved or non-blocking commented results. The gate runs on python3 and fails open if the runtime is absent.",
     "developerName": "Accent Labs Inc.",
     "category": "Productivity",
     "capabilities": [

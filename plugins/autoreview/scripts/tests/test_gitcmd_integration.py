@@ -16,30 +16,35 @@ def mkrepo():
     return d, run
 
 
+def write(path, content):
+    with open(path, "w") as fh:
+        fh.write(content)
+
+
 class TestGit(unittest.TestCase):
     def test_state_and_identity(self):
         d, run = mkrepo()
         g = Git(d)
         self.assertEqual(g.detect_state(), "normal")
-        open(os.path.join(d, "x.txt"), "w").write("hi\n")
+        write(os.path.join(d, "x.txt"), "hi\n")
         run("add", "x.txt")
         self.assertRegex(g.compute_identity("normal"), r"^[0-9a-f]{40}$")
 
     def test_merge_needs_review(self):
         d, run = mkrepo()
         run("checkout", "-q", "-b", "feature")
-        open(os.path.join(d, "c.txt"), "w").write("feature\n")
+        write(os.path.join(d, "c.txt"), "feature\n")
         run("add", "c.txt")
         run("commit", "-q", "-m", "f")
         run("checkout", "-q", "main")
-        open(os.path.join(d, "c.txt"), "w").write("main\n")
+        write(os.path.join(d, "c.txt"), "main\n")
         run("add", "c.txt")
         run("commit", "-q", "-m", "m")
         try:
             run("merge", "-q", "feature")
         except subprocess.CalledProcessError:
             pass
-        open(os.path.join(d, "c.txt"), "w").write("hand\n")
+        write(os.path.join(d, "c.txt"), "hand\n")
         run("add", "c.txt")
         g = Git(d)
         self.assertEqual(g.detect_state(), "merge")
@@ -47,11 +52,11 @@ class TestGit(unittest.TestCase):
 
     def test_clean_merge_does_not_force_review(self):
         d, run = mkrepo()
-        open(os.path.join(d, "base.txt"), "w").write("base\n"); run("add", "base.txt"); run("commit", "-q", "-m", "base")
+        write(os.path.join(d, "base.txt"), "base\n"); run("add", "base.txt"); run("commit", "-q", "-m", "base")
         run("checkout", "-q", "-b", "feature")
-        open(os.path.join(d, "f.txt"), "w").write("feature\n"); run("add", "f.txt"); run("commit", "-q", "-m", "f")
+        write(os.path.join(d, "f.txt"), "feature\n"); run("add", "f.txt"); run("commit", "-q", "-m", "f")
         run("checkout", "-q", "main")
-        open(os.path.join(d, "m.txt"), "w").write("main\n"); run("add", "m.txt"); run("commit", "-q", "-m", "m")
+        write(os.path.join(d, "m.txt"), "main\n"); run("add", "m.txt"); run("commit", "-q", "-m", "m")
         try:
             run("merge", "--no-commit", "--no-ff", "feature")  # non-conflicting; pause before commit
         except subprocess.CalledProcessError:
@@ -63,9 +68,9 @@ class TestGit(unittest.TestCase):
     def test_merge_with_staged_conflict_markers_is_reviewed(self):
         d, run = mkrepo()
         run("checkout", "-q", "-b", "feature")
-        open(os.path.join(d, "c.txt"), "w").write("feature\n"); run("add", "c.txt"); run("commit", "-q", "-m", "f")
+        write(os.path.join(d, "c.txt"), "feature\n"); run("add", "c.txt"); run("commit", "-q", "-m", "f")
         run("checkout", "-q", "main")
-        open(os.path.join(d, "c.txt"), "w").write("main\n"); run("add", "c.txt"); run("commit", "-q", "-m", "m")
+        write(os.path.join(d, "c.txt"), "main\n"); run("add", "c.txt"); run("commit", "-q", "-m", "m")
         try:
             run("merge", "-q", "feature")
         except subprocess.CalledProcessError:

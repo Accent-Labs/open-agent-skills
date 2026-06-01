@@ -9,10 +9,13 @@ class TestTokenize(unittest.TestCase):
         self.assertEqual(d.split_segments('a && b ; c | d'), ['a', 'b', 'c', 'd'])
         self.assertEqual(d.split_segments('git commit -m "a && b"'), ['git commit -m "a && b"'])
         self.assertEqual(d.split_segments("git commit -m 'x ; y'"), ["git commit -m 'x ; y'"])
+        self.assertEqual(d.split_segments("git add x\ngit commit -m x"), ["git add x", "git commit -m x"])
+        self.assertEqual(d.split_segments('git commit -m "line 1\nline 2"'), ['git commit -m "line 1\nline 2"'])
 
     def test_tokenize(self):
         self.assertEqual(d.tokenize_segment('git commit -m "a && b"'), ['git', 'commit', '-m', 'a && b'])
         self.assertEqual(d.tokenize_segment('VAR=val git commit'), ['VAR=val', 'git', 'commit'])
+        self.assertEqual(d.tokenize_segment('git\ncommit\t-m x'), ['git', 'commit', '-m', 'x'])
 
 
 class TestFindCommit(unittest.TestCase):
@@ -20,6 +23,7 @@ class TestFindCommit(unittest.TestCase):
         self.assertEqual(d.find_git_commit('git commit'), [])
         self.assertEqual(d.find_git_commit('git commit -m "msg"'), ['-m', 'msg'])
         self.assertEqual(d.find_git_commit('git -C /r -c a=b commit -m y'), ['-m', 'y'])
+        self.assertEqual(d.find_git_commit('/usr/bin/git commit -m y'), ['-m', 'y'])
         self.assertEqual(d.find_git_commit('VAR=1 git commit --amend'), ['--amend'])
         self.assertEqual(d.find_git_commit('echo hi && git commit'), [])
         self.assertIsNone(d.find_git_commit('git commit-tree abc'))
@@ -90,6 +94,7 @@ class TestNumstat(unittest.TestCase):
 class TestUnsafe(unittest.TestCase):
     def test_safe_shapes(self):
         self.assertEqual(d.analyze_command("git commit -m x"), ([["-m", "x"]], False, False, True))
+        self.assertEqual(d.analyze_command("/usr/bin/git commit -m x"), ([["-m", "x"]], False, False, True))
         self.assertEqual(d.analyze_command("echo done && git commit -m x"), ([["-m", "x"]], False, False, True))
         self.assertEqual(d.analyze_command("env FOO=bar git commit -m x"), ([["-m", "x"]], False, False, True))
         self.assertEqual(d.analyze_command("ls -la"), ([], False, False, False))
@@ -104,7 +109,9 @@ class TestUnsafe(unittest.TestCase):
                     "env GIT_DIR=/x git commit -m x",
                     'env -S "git commit -m x"',
                     "time git commit -m x",
-                    "sudo git commit -m x"):
+                    "sudo git commit -m x",
+                    "sh -c 'git -c user.name=t commit -m x'",
+                    "echo $(/usr/bin/git commit -m x)"):
             _, _, unsafe, has_commit = d.analyze_command(cmd)
             self.assertTrue(unsafe, cmd)
             self.assertTrue(has_commit, cmd)
@@ -113,6 +120,30 @@ class TestUnsafe(unittest.TestCase):
         self.assertEqual(d.analyze_command('echo "git commit"'), ([], False, False, False))
         _, _, _, has_commit = d.analyze_command('env -S "echo hi"')
         self.assertFalse(has_commit)  # env -S without a git commit -> not gated
+
+    def test_newline_separated_commit_is_detected(self):
+        commits, mut, unsafe, has_commit = d.analyze_command("git add x\ngit commit -m x")
+        self.assertEqual(commits, [["-m", "x"]])
+        self.assertTrue(mut)
+        self.assertFalse(unsafe)
+        self.assertTrue(has_commit)
+
+    def test_nested_shell_and_substitution_commit_forms_are_unsafe(self):
+        for cmd in (
+            "sh -c 'git commit -m x'",
+            "sh -c 'git -c user.name=t commit -m x'",
+            'bash -c "git commit -m x"',
+            'zsh -c "git commit -m x"',
+            "eval 'git commit -m x'",
+            "echo $(git commit -m x)",
+            "echo $(/usr/bin/git commit -m x)",
+            "echo `git commit -m x`",
+            'g(){ git "$@"; }; g commit -m x',
+            "sudo git commit -m x",
+        ):
+            _, _, unsafe, has_commit = d.analyze_command(cmd)
+            self.assertTrue(unsafe, cmd)
+            self.assertTrue(has_commit, cmd)
 
 
 if __name__ == '__main__':

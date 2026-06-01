@@ -7,6 +7,7 @@ from . import diffparse, markers
 from .core import decide_gate
 from .gitcmd import Git
 from .models import BLOCK
+from .schema import validate_marker_payload
 
 
 def _warn(msg: str) -> None:
@@ -17,10 +18,8 @@ def _do_mark(payload_json: str) -> None:
     git = Git(os.getcwd())
     identity = git.compute_identity(git.detect_state())
     mdir = markers.marker_dir(git)
-    try:
-        payload = json.loads(payload_json or "{}")
-    except ValueError:
-        payload = {}
+    payload = json.loads(payload_json or "{}")
+    validate_marker_payload(payload)
     markers.write(markers.marker_path(mdir, identity), payload)
     sys.stdout.write(f"marker written for {identity}\n")
 

@@ -9,10 +9,8 @@ Each plugin groups one or more **skills** — self-contained reference documents
 | Agent | Status | Discovery |
 |---|---|---|
 | Claude Code | Supported | Reads `.claude-plugin/marketplace.json` and each plugin's `.claude-plugin/plugin.json` |
-| OpenAI Codex | Supported¹ | Reads `.agents/plugins/marketplace.json` and each plugin's `.codex-plugin/plugin.json` |
+| OpenAI Codex | Supported | Reads `.agents/plugins/marketplace.json` and each plugin's `.codex-plugin/plugin.json` |
 | Gemini CLI | Planned | Discovery format TBD |
-
-¹ Codex skill discovery is supported; the `autoreview` plugin's Codex **pre-commit hook** is **experimental** (pending live validation — see the autoreview section).
 
 The repository is intentionally structured so that adding a new agent means adding a new entrypoint or registry — not forking the underlying skill content.
 
@@ -33,14 +31,14 @@ See `ARCHITECTURE.md` for the plugin and skill format conventions.
 
 ### `autoreview`
 
-A deterministic pre-commit review gate. A git-commit hook runs a fast, zero-LLM check over the staged change and, for non-trivial / sensitive / hand-resolved-merge changes, blocks the commit and asks the agent to run a multi-perspective review (correctness, security, conventions) before re-committing. Truly trivial changes (docs, small diffs) pass silently; sensitive changes — dependency manifests and lockfiles, CI, Dockerfiles, migrations, auth/security paths — always get reviewed even when small. Install and you're done — no setup beyond `python3`, which ships with macOS and Linux (the gate fails open if it is missing).
-
-**Validation status:** the hook contract is validated live on **Claude Code** (the hook fires, blocks risky commits, and feeds the directive back to the agent). **OpenAI Codex** support is **experimental** — the plugin ships a Codex hook, but the Codex hook contract and the inline-reviewer spawn path are pending live validation (see `plugins/autoreview/SPIKES.md`). The gate fails open, so on an unvalidated tool the worst case is "no gate," never a false block.
+A deterministic pre-commit review gate. A git-commit hook runs a fast, zero-LLM check over the staged change and, for non-trivial / sensitive / hand-resolved-merge changes, blocks the commit and asks the agent to run a multi-perspective review (correctness, security, conventions) before re-committing. Truly trivial changes (docs, small diffs) pass silently; sensitive changes such as dependency manifests, CI, Dockerfiles, migrations, and auth/security paths always get reviewed even when small. After the host installs and trusts/enables the hook, there is no runtime setup beyond `python3`; the gate fails open if it is missing.
 
 | Component | Description |
 |---|---|
-| `autoreview` skill | Spawns parallel reviewers over the staged diff, aggregates a `PASS` / `PASS_WITH_ISSUES` / `FAIL` verdict, and drives a fix-or-dispute loop before re-committing |
+| `autoreview` skill | Launches provider-neutral reviewer profiles over staged diff/context, aggregates strict JSON outcomes, and drives a fix-or-dispute loop before re-committing |
 | pre-commit hook | A `PreToolUse` hook on `git commit` that runs the deterministic gate (Python, fail-open) and blocks risky commits with a directive to review |
+
+See `plugins/autoreview/README.md` for the plugin contract, schema, validation matrix, and hook trust notes.
 
 ## Installing
 

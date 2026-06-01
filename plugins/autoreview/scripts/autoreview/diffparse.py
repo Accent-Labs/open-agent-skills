@@ -37,7 +37,7 @@ def split_segments(command: str) -> List[str]:
             cur = ""
             i += 2
             continue
-        if c in (";", "|", "&"):
+        if c in (";", "|", "&", "\n", "\r"):
             segments.append(cur)
             cur = ""
             i += 1
@@ -77,7 +77,7 @@ def tokenize_segment(segment: str) -> List[str]:
             started = True
             i += 1
             continue
-        if c in (" ", "\t"):
+        if c.isspace():
             if started:
                 tokens.append(cur)
                 cur = ""
@@ -99,9 +99,16 @@ _GIT_ENV = re.compile(r"^GIT_[A-Za-z0-9_]*=")  # GIT_DIR/GIT_INDEX_FILE/GIT_WORK
 GIT_GLOBAL_VALUE_OPTS = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path"}
 GIT_INDEX_MUTATORS = {"add", "rm", "mv", "reset", "restore", "stash", "apply"}
 _WRAPPERS = {"command", "builtin", "exec", "nohup"}     # transparent single-token wrappers we can model
+_SHELLS = {"sh", "bash", "zsh"}
+_EVALS = {"eval"}
+_UNKNOWN_WRAPPERS = {"sudo", "time", "xargs", "python", "python3", "ruby", "perl", "node"}
 _CD_COMMANDS = {"cd", "pushd", "popd", "chdir"}         # change the working directory
 _REPO_REDIRECT_GLOBALS = {"-C", "--git-dir", "--work-tree"}  # git globals that change repo/cwd/worktree
 _ENV_SPLIT_OPTS = ("-S", "--split-string")
+
+
+def _is_git_token(token: str) -> bool:
+    return token == "git" or token.endswith("/git")
 
 
 def _strip_env(tokens: List[str]) -> List[str]:
@@ -130,13 +137,28 @@ def _wrapped_git_commit(tokens: List[str]) -> bool:
     wrapper (e.g. time / sudo / xargs). Token-based, so `echo "git commit"` (one quoted token) is
     NOT matched."""
     for j in range(len(tokens) - 1):
-        if tokens[j] == "git":
+        if _is_git_token(tokens[j]):
             k = j + 1
             while k < len(tokens) and tokens[k].startswith("-"):
                 k += 2 if tokens[k] in GIT_GLOBAL_VALUE_OPTS else 1
             if k < len(tokens) and tokens[k] == "commit":
                 return True
     return False
+
+
+def _contains_git_commit_text(text: str) -> bool:
+    return (
+        _wrapped_git_commit(tokenize_segment(text))
+        or re.search(r"(?<![\w/-])(?:[\w./-]+/)?git\b(?:\s+[^\s;&|()'\"`]+)*\s+commit\b", text) is not None
+    )
+
+
+def _has_command_substitution(text: str) -> bool:
+    return "$(" in text or "`" in text
+
+
+def _has_function_definition(text: str) -> bool:
+    return re.search(r"\b[A-Za-z_][A-Za-z0-9_]*\s*\(\)\s*\{", text) is not None
 
 
 def _env_split_value(rest: List[str]) -> Optional[str]:
@@ -167,6 +189,7 @@ def analyze_command(command: str):
     has_mutator = False
     unsafe = False
     has_commit = False
+    saw_function_def = False
     for seg in split_segments(command):
         tokens = tokenize_segment(seg)
         # leading env assignments: benign unless they redirect git (GIT_DIR/GIT_INDEX_FILE/...)
@@ -196,9 +219,36 @@ def analyze_command(command: str):
                 unsafe = True  # GIT_* assignment passed through env
             tokens = inner
             head = tokens[0] if tokens else ""
-        if head != "git":
+        if head in _SHELLS:
+            if "-c" in tokens and any(_contains_git_commit_text(t) for t in tokens):
+                unsafe = True
+                has_commit = True
+            continue
+        if head in _EVALS:
+            if _contains_git_commit_text(seg):
+                unsafe = True
+                has_commit = True
+            continue
+        if _has_command_substitution(seg) and _contains_git_commit_text(seg):
+            unsafe = True
+            has_commit = True
+            continue
+        if _has_function_definition(seg):
+            unsafe = True
+            saw_function_def = True
+            if "commit" in tokens:
+                has_commit = True
+            continue
+        if saw_function_def and "commit" in tokens:
+            unsafe = True
+            has_commit = True
+            continue
+        if not _is_git_token(head):
             if _wrapped_git_commit(tokens):
                 unsafe = True  # git commit behind an unmodelable wrapper (time/sudo/...)
+                has_commit = True
+            elif head in _UNKNOWN_WRAPPERS and _contains_git_commit_text(seg):
+                unsafe = True
                 has_commit = True
             continue
         # direct git invocation: walk global options

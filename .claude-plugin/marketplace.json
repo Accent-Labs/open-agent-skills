@@ -1,5 +1,6 @@
 {
   "name": "open-agent-skills",
+  "description": "Provider-neutral plugins and skills for AI coding agents.",
   "owner": {
     "name": "Accent Labs Inc."
   },
