@@ -51,10 +51,23 @@ During a conflicted `git merge` (Apple git 2.50.1, ORT default):
 `doctor`, `sandbox`. `codex exec` supports `-c key=value` config overrides and `-m model`.
 Useful for driving the remaining Codex hook/detection/spawn spikes.
 
-## Still pending (require live CC/Codex sessions)
+## Hook contract — Claude Code (0.1 / 0.2 / 0.3) — VALIDATED LIVE
 
-- 0.1 hook discovery path (root `hooks.json` vs `hooks/hooks.json`) per tool.
-- 0.2 stdin shape + exit-2 block + stderr-feedback contract per tool.
-- 0.5 tool detection + plugin-root from the SKILL (main-agent) context.
+Tested with `claude -p "...git commit..." --plugin-dir <plugin> --dangerously-skip-permissions`
+against a temp repo with a 40-line staged file:
+
+- **0.1 location:** Claude Code loads plugin hooks from **`hooks/hooks.json`** (plugin root `hooks/`
+  subdir). A root-level `hooks.json` did **not** load. → ship BOTH `hooks.json` (Codex) and
+  `hooks/hooks.json` (Claude Code); same content.
+- **0.2 contract:** the `PreToolUse` / `Bash` hook fired on `git commit`, the gate exited 2, the
+  commit was **blocked** (HEAD unchanged), and the stderr directive was surfaced to the agent
+  verbatim ("Autoreview required (non-trivial change (40 lines)). Invoke the `autoreview` skill…").
+- **0.3 plugin root:** `${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}` resolved correctly when loaded as a
+  plugin (the gate ran from the plugin dir). Also confirmed the hook MECHANISM independently via a
+  project `.claude/settings.json` hook pointing at an absolute `gate.sh`.
+
+## Still pending
+
+- Codex: confirm root-level `hooks.json` loads + the exit-2/stderr contract under `codex exec`.
+- 0.5 tool detection + plugin-root from the SKILL (main-agent) context (both tools).
 - 0.6 spawn paths — Claude Code native `agents/<id>.md` by name; Codex/generic inline worker.
-- Codex detection env confirmation (CODEX_THREAD_ID present in a Codex session).
