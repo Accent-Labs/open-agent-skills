@@ -55,6 +55,11 @@ class TestProfiles(unittest.TestCase):
         self.assertIn("git show :path", body)
         self.assertIn("NEEDS_CONTEXT", body)
 
+    def test_skill_requires_commit_message_summary_for_addressed_feedback(self):
+        body = parse_frontmatter(read(SKILL))[1]
+        self.assertRegex(body, r"(?is)commit message.*feedback.*fixes")
+        self.assertRegex(body, r"(?is)feedback.*fixes.*commit message")
+
 
 if __name__ == "__main__":
     unittest.main()

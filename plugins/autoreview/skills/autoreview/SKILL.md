@@ -82,6 +82,7 @@ If the gate says the commit mode is unsupported, do not review yet. Stage change
 
 6. **Resolve blocking feedback.**
    Fix true defects and re-stage fixes. If a blocking item is false positive, record a short dispute with staged evidence and rerun the reviewer. If blocking feedback remains after three rounds, stop and tell the user the change should be split or handled manually.
+   Track each reviewer feedback item you addressed and the corresponding fixes; the follow-up commit message must list them when review feedback caused code or test changes.
 
 7. **Write an authorizing marker only for non-blocking final outcomes.**
    Only `APPROVED` and non-blocking `COMMENTED` may proceed. Run:
@@ -107,6 +108,13 @@ If the gate says the commit mode is unsupported, do not review yet. Stage change
 
 8. **Retry the commit.**
    Run one plain `git commit` for the staged tree. Do not retry unsupported command forms. The marker is keyed to the staged tree and is consumed once.
+   If this autoreview cycle included fixes for reviewer feedback, include a commit message body that lists the concrete feedback and fixes made. Keep the original commit subject if one was already intended, and add a short body such as:
+
+   ```text
+   Autoreview:
+   - correctness: feedback about missing nil handling; fixed by guarding the parsed value before use.
+   - security: feedback about unescaped HTML; fixed by rendering through the existing sanitizer.
+   ```
 
 ## Output Contract
 
