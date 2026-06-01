@@ -95,10 +95,13 @@ def tokenize_segment(segment: str) -> List[str]:
 # ---------- commit detection & flags ----------
 
 _ENV_ASSIGN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+_GIT_ENV = re.compile(r"^GIT_[A-Za-z0-9_]*=")  # GIT_DIR/GIT_INDEX_FILE/GIT_WORK_TREE/... redirect git
 GIT_GLOBAL_VALUE_OPTS = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path"}
 GIT_INDEX_MUTATORS = {"add", "rm", "mv", "reset", "restore", "stash", "apply"}
-_WRAPPERS = {"command", "builtin", "exec", "nohup"}  # simple single-token command wrappers
-_ENV_VALUE_OPTS = {"-u", "--unset", "-C", "--chdir", "-S", "--split-string"}
+_WRAPPERS = {"command", "builtin", "exec", "nohup"}     # transparent single-token wrappers we can model
+_CD_COMMANDS = {"cd", "pushd", "popd", "chdir"}         # change the working directory
+_REPO_REDIRECT_GLOBALS = {"-C", "--git-dir", "--work-tree"}  # git globals that change repo/cwd/worktree
+_ENV_SPLIT_OPTS = ("-S", "--split-string")
 
 
 def _strip_env(tokens: List[str]) -> List[str]:
@@ -112,7 +115,7 @@ def _strip_env(tokens: List[str]) -> List[str]:
         if _ENV_ASSIGN.match(t):
             i += 1
             continue
-        if t in _ENV_VALUE_OPTS:
+        if t in ("-u", "--unset", "-C", "--chdir", "-S", "--split-string"):
             i += 2
             continue
         if t.startswith("-") and t != "-":
@@ -122,59 +125,109 @@ def _strip_env(tokens: List[str]) -> List[str]:
     return tokens[i:]
 
 
-def _unwrap(tokens: List[str]) -> List[str]:
-    """Strip leading VAR=val assignments and simple wrappers (env, command, ...) so a git
-    invocation hidden behind them is still detected."""
-    changed = True
-    while changed and tokens:
-        changed = False
-        while tokens and _ENV_ASSIGN.match(tokens[0]):
-            tokens = tokens[1:]
-            changed = True
-        if tokens and tokens[0] == "env":
-            tokens = _strip_env(tokens[1:])
-            changed = True
-        elif tokens and tokens[0] in _WRAPPERS:
-            tokens = tokens[1:]
-            changed = True
-    return tokens
+def _wrapped_git_commit(tokens: List[str]) -> bool:
+    """True if `git ... commit` appears as command tokens in this segment behind an unmodelable
+    wrapper (e.g. time / sudo / xargs). Token-based, so `echo "git commit"` (one quoted token) is
+    NOT matched."""
+    for j in range(len(tokens) - 1):
+        if tokens[j] == "git":
+            k = j + 1
+            while k < len(tokens) and tokens[k].startswith("-"):
+                k += 2 if tokens[k] in GIT_GLOBAL_VALUE_OPTS else 1
+            if k < len(tokens) and tokens[k] == "commit":
+                return True
+    return False
 
 
-def _git_calls(command: str):
-    """Yield (subcommand, arg_tokens) for each git invocation across all command segments,
-    after unwrapping VAR=/env/wrappers and skipping git global options."""
-    for seg in split_segments(command):
-        tokens = _unwrap(tokenize_segment(seg))
-        if not tokens or tokens[0] != "git":
-            continue
-        i = 1
-        while i < len(tokens) and tokens[i].startswith("-"):
-            i += 2 if tokens[i] in GIT_GLOBAL_VALUE_OPTS else 1
-        if i < len(tokens):
-            yield tokens[i], tokens[i + 1:]
-
-
-def find_git_commit(command: str) -> Optional[List[str]]:
-    """Arg tokens after `commit` for the FIRST git commit in the command, else None.
-    Empty list = `git commit` with no args (distinct from None)."""
-    for sub, args in _git_calls(command):
-        if sub == "commit":
-            return args
+def _env_split_value(rest: List[str]) -> Optional[str]:
+    """Return the command STRING of `env -S/--split-string <STR>` (or attached forms), else None."""
+    for j, t in enumerate(rest):
+        if t in _ENV_SPLIT_OPTS:
+            return rest[j + 1] if j + 1 < len(rest) else ""
+        if t.startswith("--split-string="):
+            return t.split("=", 1)[1]
+        if t.startswith("-S") and len(t) > 2:
+            return t[2:]
     return None
 
 
-def scan_commits(command: str):
-    """Return (commit_arg_lists, has_index_mutator). has_index_mutator is True when the command
-    also runs a git command that changes the index/working tree (add/rm/mv/reset/...), so the
-    staged tree the gate inspects may differ from what gets committed."""
-    commits = []
+def analyze_command(command: str):
+    """Classify a Bash command for the gate. Returns (commits, has_mutator, unsafe, has_commit):
+
+    - commits: arg-token-lists for each cleanly-parsed DIRECT `git commit` (first token `git`).
+    - has_mutator: a git index-mutating command co-occurs (add/rm/mv/reset/...).
+    - unsafe: the command changes cwd/repo/index or wraps the commit unmodelably (cd/pushd,
+      `git -C`/`--git-dir`/`--work-tree`, GIT_* env, `env -S`, time/sudo/unknown wrappers).
+    - has_commit: a git commit is present anywhere (direct OR behind a wrapper / env -S).
+
+    The allow-shape is intentionally narrow: exactly one cleanly-parsed plain commit with `unsafe`
+    and `has_mutator` both False. Anything else blocks (we do not partially model shell execution).
+    """
+    commits: List[List[str]] = []
     has_mutator = False
-    for sub, args in _git_calls(command):
-        if sub == "commit":
-            commits.append(args)
-        elif sub in GIT_INDEX_MUTATORS:
-            has_mutator = True
+    unsafe = False
+    has_commit = False
+    for seg in split_segments(command):
+        tokens = tokenize_segment(seg)
+        # leading env assignments: benign unless they redirect git (GIT_DIR/GIT_INDEX_FILE/...)
+        while tokens and _ENV_ASSIGN.match(tokens[0]):
+            if _GIT_ENV.match(tokens[0]):
+                unsafe = True
+            tokens = tokens[1:]
+        # strip transparent wrappers we can fully model
+        while tokens and tokens[0] in _WRAPPERS:
+            tokens = tokens[1:]
+        if not tokens:
+            continue
+        head = tokens[0]
+        if head in _CD_COMMANDS:
+            unsafe = True
+            continue
+        if head == "env":
+            rest = tokens[1:]
+            sval = _env_split_value(rest)
+            if sval is not None:
+                unsafe = True  # env -S runs a command STRING we don't model
+                if _wrapped_git_commit(tokenize_segment(sval)):
+                    has_commit = True
+                continue
+            inner = _strip_env(rest)
+            if any(_GIT_ENV.match(t) for t in rest[: len(rest) - len(inner)]):
+                unsafe = True  # GIT_* assignment passed through env
+            tokens = inner
+            head = tokens[0] if tokens else ""
+        if head != "git":
+            if _wrapped_git_commit(tokens):
+                unsafe = True  # git commit behind an unmodelable wrapper (time/sudo/...)
+                has_commit = True
+            continue
+        # direct git invocation: walk global options
+        i = 1
+        while i < len(tokens) and tokens[i].startswith("-"):
+            if tokens[i].split("=", 1)[0] in _REPO_REDIRECT_GLOBALS:
+                unsafe = True
+            i += 2 if tokens[i] in GIT_GLOBAL_VALUE_OPTS else 1
+        if i < len(tokens):
+            sub = tokens[i]
+            if sub == "commit":
+                commits.append(tokens[i + 1:])
+                has_commit = True
+            elif sub in GIT_INDEX_MUTATORS:
+                has_mutator = True
+    return commits, has_mutator, unsafe, has_commit
+
+
+def scan_commits(command: str):
+    """Back-compat: (commits, has_mutator)."""
+    commits, has_mutator, _, _ = analyze_command(command)
     return commits, has_mutator
+
+
+def find_git_commit(command: str) -> Optional[List[str]]:
+    """Arg tokens after `commit` for the FIRST git commit, else None.
+    Empty list = `git commit` with no args (distinct from None)."""
+    commits, _, _, _ = analyze_command(command)
+    return commits[0] if commits else None
 
 
 COMMIT_LONG_VALUE_OPTS = {

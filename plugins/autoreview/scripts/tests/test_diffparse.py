@@ -87,5 +87,33 @@ class TestNumstat(unittest.TestCase):
         self.assertEqual(d.parse_numstat_z("5\t0\t\0old.js"), [])  # missing newpath -> drop, no crash
 
 
+class TestUnsafe(unittest.TestCase):
+    def test_safe_shapes(self):
+        self.assertEqual(d.analyze_command("git commit -m x"), ([["-m", "x"]], False, False, True))
+        self.assertEqual(d.analyze_command("echo done && git commit -m x"), ([["-m", "x"]], False, False, True))
+        self.assertEqual(d.analyze_command("env FOO=bar git commit -m x"), ([["-m", "x"]], False, False, True))
+        self.assertEqual(d.analyze_command("ls -la"), ([], False, False, False))
+
+    def test_repo_or_cwd_changing_forms_are_unsafe(self):
+        for cmd in ("cd /other && git commit -m x",
+                    "git -C /other commit -m x",
+                    "git --git-dir=/x/.git commit -m x",
+                    "git --work-tree=/x commit -m x",
+                    "GIT_INDEX_FILE=/tmp/i git commit -m x",
+                    "GIT_DIR=/x git commit -m x",
+                    "env GIT_DIR=/x git commit -m x",
+                    'env -S "git commit -m x"',
+                    "time git commit -m x",
+                    "sudo git commit -m x"):
+            _, _, unsafe, has_commit = d.analyze_command(cmd)
+            self.assertTrue(unsafe, cmd)
+            self.assertTrue(has_commit, cmd)
+
+    def test_quoted_text_is_not_a_commit(self):
+        self.assertEqual(d.analyze_command('echo "git commit"'), ([], False, False, False))
+        _, _, _, has_commit = d.analyze_command('env -S "echo hi"')
+        self.assertFalse(has_commit)  # env -S without a git commit -> not gated
+
+
 if __name__ == '__main__':
     unittest.main()

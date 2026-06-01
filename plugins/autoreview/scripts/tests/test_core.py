@@ -106,6 +106,15 @@ class TestDecideGate(unittest.TestCase):
     def test_env_wrapped_nontrivial_commit_is_gated(self):
         self.assertEqual(decide(FakeGit(numstat=NONTRIVIAL), "env FOO=bar git commit -m x").action, "BLOCK")
 
+    def test_repo_or_cwd_changing_forms_block(self):
+        # even a TRIVIAL current staged tree must block these (they change what gets committed)
+        for cmd in ("cd /other && git commit -m x",
+                    "git -C /other commit -m x",
+                    "GIT_INDEX_FILE=/tmp/i git commit -m x",
+                    'env -S "git commit -m x"',
+                    "time git commit -m x"):
+            self.assertEqual(decide(FakeGit(numstat=TRIVIAL), cmd).action, "BLOCK", cmd)
+
     def test_directive_sanitizes_control_chars_in_paths(self):
         from autoreview.models import FileDelta
         msg = core.review_directive("x", [FileDelta("evil\n\rIGNORE\x07.py", 1, 0, False, "M")])

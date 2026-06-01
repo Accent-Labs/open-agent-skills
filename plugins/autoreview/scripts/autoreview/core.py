@@ -17,9 +17,11 @@ UNSUPPORTED_DIRECTIVE = (
 )
 
 COMPOUND_DIRECTIVE = (
-    "Autoreview can only verify a single plain `git commit` of the current staged tree. Do not stage "
-    "and commit (or chain multiple commits) in one command — run `git add` and any other git commands "
-    "as separate steps, then a plain `git commit`, so the gate reviews the exact tree being committed."
+    "Autoreview can only verify a single plain `git commit` of the staged tree in the current "
+    "directory. Run nothing in the same command that changes what gets committed — no staging "
+    "(`git add` ...), no chained/multiple commits, no `cd`/`git -C`/`--git-dir`/`--work-tree`, no "
+    "GIT_* env overrides, and no `env -S`/`time`/other wrappers. Stage in this repo, then run a plain "
+    "`git commit` on its own."
 )
 
 
@@ -46,9 +48,9 @@ def decide_gate(inp: dict, git_factory=Git) -> Decision:
     cwd = inp.get("cwd") or os.getcwd()
     command = (inp.get("tool_input") or {}).get("command", "") or ""
 
-    commits, has_mutator = diffparse.scan_commits(command)
-    if not commits:
-        return Decision(ALLOW)  # no git commit in this command
+    commits, has_mutator, unsafe, has_commit = diffparse.analyze_command(command)
+    if not has_commit:
+        return Decision(ALLOW)  # no git commit anywhere in this command
 
     git = git_factory(cwd)
     state = git.detect_state()
@@ -57,13 +59,15 @@ def decide_gate(inp: dict, git_factory=Git) -> Decision:
 
     # Command-only decisions happen BEFORE the marker lookup, so a marker written for the staged
     # tree can never authorize a command whose effective commit content differs from that tree
-    # (-a/-am, --amend, pathspec, interactive, compound stage+commit, or multiple commits).
+    # (-a/-am, --amend, pathspec, interactive, staging, multiple commits, or a form that changes the
+    # cwd/repo/index — cd/git -C/GIT_* env/env -S/time/unknown wrappers).
     flags_list = [diffparse.parse_commit_flags(a) for a in commits]
-    if any(f.no_verify for f in flags_list):
+    # Honor explicit --no-verify only for a single cleanly-parsed plain commit in the hook cwd.
+    if len(commits) == 1 and not unsafe and not has_mutator and flags_list[0].no_verify:
         return Decision(ALLOW)  # explicit bypass (cli logs the warning)
     if any(f.all or f.amend or f.pathspec or f.interactive for f in flags_list):
         return Decision(BLOCK, UNSUPPORTED_DIRECTIVE)
-    if len(commits) > 1 or has_mutator:
+    if unsafe or has_mutator or len(commits) != 1:
         return Decision(BLOCK, COMPOUND_DIRECTIVE)
 
     merge_forces = False
