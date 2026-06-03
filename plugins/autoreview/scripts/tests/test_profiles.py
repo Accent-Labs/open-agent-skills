@@ -60,6 +60,26 @@ class TestProfiles(unittest.TestCase):
         self.assertRegex(body, r"(?is)commit message.*feedback.*fixes")
         self.assertRegex(body, r"(?is)feedback.*fixes.*commit message")
 
+    def test_json_examples_do_not_use_placeholder_enums(self):
+        for filename in sorted(n for n in os.listdir(AGENTS) if n.endswith(".md")):
+            body = parse_frontmatter(read(os.path.join(AGENTS, filename)))[1]
+            self.assertNotRegex(body, r'"outcome":\s*"[^"]*\|')
+            self.assertNotRegex(body, r'"severity":\s*"[^"]*\|')
+            self.assertRegex(body, r"(?is)raw JSON.*no Markdown fences|no Markdown fences.*raw JSON")
+        skill_body = parse_frontmatter(read(SKILL))[1]
+        self.assertNotRegex(skill_body, r'"outcome":\s*"[^"]*\|')
+        self.assertNotRegex(skill_body, r'"severity":\s*"[^"]*\|')
+
+    def test_skill_launches_workers_by_reviewer_profile(self):
+        body = parse_frontmatter(read(SKILL))[1]
+        self.assertRegex(body, r"one isolated worker per reviewer profile")
+        self.assertNotRegex(body, r"one isolated worker per file")
+
+    def test_profiles_define_non_overlapping_roles(self):
+        for filename in sorted(n for n in os.listdir(AGENTS) if n.endswith(".md")):
+            body = parse_frontmatter(read(os.path.join(AGENTS, filename)))[1]
+            self.assertRegex(body, r"Do not duplicate")
+
 
 if __name__ == "__main__":
     unittest.main()

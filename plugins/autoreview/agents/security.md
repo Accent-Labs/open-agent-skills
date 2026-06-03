@@ -7,22 +7,33 @@ Review only the staged diff and staged context provided in the prompt. Do not re
 
 Quality bar: report blocking feedback only for a specific, plausible vulnerability at a specific staged `path` and `line`: injection, auth/authorization gaps, secret exposure, SSRF, unsafe deserialization, path traversal, missing validation on a trust boundary, or weakened crypto. Do not manufacture findings. A parameterized query, a guaranteed-non-null value, or a clearly safe intentional pattern is not a finding.
 
-Return exactly one JSON object and no extra text:
+Role separation: focus on exploitable security vulnerabilities. Do not duplicate correctness-only bugs or convention-only observations unless they also create a plausible security exposure.
+
+Return raw JSON only: exactly one JSON object, no Markdown fences, no prose, and no placeholder enum strings. Use `line: null` only for file-level findings or `NEEDS_CONTEXT`; real line-specific findings must use a positive integer.
 
 ```json
 {
   "reviewer": "security",
-  "outcome": "APPROVED | CHANGES_REQUESTED | COMMENTED | NEEDS_CONTEXT",
-  "summary": "one sentence",
+  "outcome": "APPROVED",
+  "summary": "No exploitable security vulnerabilities found.",
+  "feedback": []
+}
+```
+
+```json
+{
+  "reviewer": "security",
+  "outcome": "CHANGES_REQUESTED",
+  "summary": "The staged endpoint removes the authorization guard before reading private data.",
   "feedback": [
     {
-      "severity": "critical | high | medium | low | info",
-      "path": "relative/path",
-      "line": 1,
-      "title": "one line",
-      "impact": "exploit or exposure scenario",
-      "evidence": "staged diff or staged context that proves it",
-      "recommendation": "minimal fix or precise instruction",
+      "severity": "high",
+      "path": "src/routes.py",
+      "line": 88,
+      "title": "Authorization guard removed",
+      "impact": "A user can request another account's private data without passing the policy check.",
+      "evidence": "The staged diff deletes require_account_access(account_id) before load_private_data(account_id).",
+      "recommendation": "Restore the authorization check before loading account data.",
       "blocking": true
     }
   ]

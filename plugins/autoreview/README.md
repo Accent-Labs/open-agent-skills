@@ -40,6 +40,8 @@ Every reviewer returns exactly one JSON object:
 }
 ```
 
+Reviewer output must be raw JSON only, with no Markdown fences in the actual response. `summary` is required. `line` must be a positive integer for line-specific findings; use `null` only for file-level findings or protocol/context cases.
+
 Allowed outcomes:
 
 | Outcome | Meaning |
@@ -64,6 +66,8 @@ Feedback entries use this shape:
 }
 ```
 
+The aggregator injects `reviewer` into feedback items mechanically. Reviewer protocol failures, invalid JSON, and context gaps are represented in the aggregate `reviewers` metadata instead of as synthetic high-severity feedback, so severity counts cover real feedback only.
+
 ## Marker Contract
 
 `scripts/gate.py mark --payload '<JSON>'` writes a marker only for final aggregate outcomes that authorize a commit:
@@ -72,6 +76,8 @@ Feedback entries use this shape:
 - `COMMENTED` with only non-blocking low/info feedback
 
 The marker validator rejects malformed JSON, old verdict names, `CHANGES_REQUESTED`, `NEEDS_CONTEXT`, missing fields, mismatched counts, and blocking feedback. Markers are keyed to the staged tree and consumed once.
+
+Authorizing marker payloads may include reviewer metadata such as `summary`, `status`, and `error`, but only `reviewer` and an authorizing `outcome` are required for each reviewer entry.
 
 ## Validation
 

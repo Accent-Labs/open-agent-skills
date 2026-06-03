@@ -8,7 +8,7 @@ def result(outcome, feedback=None, reviewer="correctness"):
     return {
         "reviewer": reviewer,
         "outcome": outcome,
-        "summary": "",
+        "summary": "Reviewer summary.",
         "feedback": feedback or [],
     }
 
@@ -27,6 +27,15 @@ def item(severity="low", blocking=False):
 
 
 class TestReviewerSchema(unittest.TestCase):
+    def test_summary_is_required(self):
+        missing_summary = {
+            "reviewer": "correctness",
+            "outcome": "APPROVED",
+            "feedback": [],
+        }
+        with self.assertRaises(schema.SchemaError):
+            schema.validate_reviewer_result(missing_summary)
+
     def test_approved_requires_no_feedback(self):
         self.assertEqual(schema.validate_reviewer_result(result("APPROVED"))["outcome"], "APPROVED")
         with self.assertRaises(schema.SchemaError):
@@ -48,7 +57,19 @@ class TestReviewerSchema(unittest.TestCase):
         coerced = schema.coerce_reviewer_result("security", "{not json")
         self.assertEqual(coerced["reviewer"], "security")
         self.assertEqual(coerced["outcome"], "NEEDS_CONTEXT")
-        self.assertTrue(coerced["feedback"][0]["blocking"])
+        self.assertEqual(coerced["feedback"], [])
+        self.assertEqual(coerced["review_error"]["kind"], "invalid_json")
+
+    def test_feedback_line_must_be_positive_when_present(self):
+        schema.validate_feedback_item(item())
+        file_level = item()
+        file_level["line"] = None
+        schema.validate_feedback_item(file_level)
+
+        zero_line = item()
+        zero_line["line"] = 0
+        with self.assertRaises(schema.SchemaError):
+            schema.validate_feedback_item(zero_line)
 
 
 class TestAggregation(unittest.TestCase):
@@ -60,6 +81,34 @@ class TestAggregation(unittest.TestCase):
         self.assertEqual(schema.aggregate_results([result("NEEDS_CONTEXT")])["outcome"], "NEEDS_CONTEXT")
         self.assertEqual(schema.aggregate_results([result("CHANGES_REQUESTED", [item("high", True)])])["outcome"],
                          "CHANGES_REQUESTED")
+
+    def test_aggregate_injects_reviewer_into_feedback_items(self):
+        aggregated = schema.aggregate_results([result("CHANGES_REQUESTED", [item("high", True)], reviewer="security")])
+        self.assertEqual(aggregated["feedback"][0]["reviewer"], "security")
+
+    def test_needs_context_does_not_count_as_real_feedback(self):
+        aggregated = schema.aggregate_results([schema.coerce_reviewer_result("security", "{not json")])
+        self.assertEqual(aggregated["outcome"], "NEEDS_CONTEXT")
+        self.assertEqual(aggregated["feedback"], [])
+        self.assertEqual(aggregated["counts"], schema._empty_counts())
+        self.assertEqual(aggregated["reviewers"][0]["reviewer"], "security")
+        self.assertEqual(aggregated["reviewers"][0]["outcome"], "NEEDS_CONTEXT")
+        self.assertEqual(aggregated["reviewers"][0]["status"], "invalid_json")
+        self.assertIn("error", aggregated["reviewers"][0])
+
+    def test_changes_requested_survives_incomplete_reviewer_metadata(self):
+        aggregated = schema.aggregate_results([
+            result("CHANGES_REQUESTED", [item("high", True)], reviewer="correctness"),
+            schema.coerce_reviewer_result("security", "{not json"),
+        ])
+        self.assertEqual(aggregated["outcome"], "CHANGES_REQUESTED")
+        self.assertEqual(aggregated["counts"]["high"], 1)
+        self.assertEqual(len(aggregated["feedback"]), 1)
+        self.assertEqual(aggregated["feedback"][0]["reviewer"], "correctness")
+        self.assertEqual(
+            [(r["reviewer"], r["outcome"], r["status"]) for r in aggregated["reviewers"]],
+            [("correctness", "CHANGES_REQUESTED", "completed"), ("security", "NEEDS_CONTEXT", "invalid_json")],
+        )
 
 
 class TestMarkerSchema(unittest.TestCase):

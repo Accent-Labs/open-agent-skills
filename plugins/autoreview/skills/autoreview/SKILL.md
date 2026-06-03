@@ -43,42 +43,53 @@ If the gate says the commit mode is unsupported, do not review yet. Stage change
    Use staged/base commands only. Do not ask reviewers to inspect live files. If context is too large, batch by file and insert explicit markers such as `[staged context truncated: 4 hunks omitted]`.
 
 3. **Launch reviewers in parallel.**
-   Start one isolated worker per file in `${ROOT}/agents/*.md`. Use the host tool's available worker or subagent mechanism. Pass each worker:
+   Start one isolated worker per reviewer profile in `${ROOT}/agents/*.md`. Use the host tool's available worker or subagent mechanism. Pass each worker:
    - the full reviewer profile content,
    - `<staged_diff>...</staged_diff>`,
    - `<staged_context>...</staged_context>`,
    - any explicit truncation markers.
 
 4. **Require strict reviewer JSON.**
-   Each reviewer must return exactly one JSON object with:
+   Each reviewer must return raw JSON only: exactly one JSON object, no Markdown fences, no prose, and no placeholder enum strings. `summary` is required. Use `line: null` only for file-level findings or `NEEDS_CONTEXT`; real line-specific findings must use a positive integer.
 
    ```json
    {
      "reviewer": "correctness",
-     "outcome": "APPROVED | CHANGES_REQUESTED | COMMENTED | NEEDS_CONTEXT",
-     "summary": "one sentence",
+     "outcome": "APPROVED",
+     "summary": "No correctness defects found.",
+     "feedback": []
+   }
+   ```
+
+   ```json
+   {
+     "reviewer": "correctness",
+     "outcome": "CHANGES_REQUESTED",
+     "summary": "The staged change can dereference a missing value.",
      "feedback": [
        {
-         "severity": "critical | high | medium | low | info",
-         "path": "relative/path",
-         "line": 1,
-         "title": "one line",
-         "impact": "concrete effect",
-         "evidence": "staged diff or staged context that proves it",
-         "recommendation": "minimal fix or precise instruction",
+         "severity": "high",
+         "path": "src/app.py",
+         "line": 42,
+         "title": "Missing value can crash request",
+         "impact": "A valid request can raise before returning an error response.",
+         "evidence": "The staged diff reads config.token before checking that config exists.",
+         "recommendation": "Restore the config presence check before reading token.",
          "blocking": true
        }
      ]
    }
    ```
 
-   Treat invalid JSON as `NEEDS_CONTEXT`. Treat `APPROVED` with feedback, `COMMENTED` with blocking or medium/high/critical feedback, and `CHANGES_REQUESTED` without blocking feedback as invalid reviewer output.
+   Allowed outcomes are `APPROVED`, `COMMENTED`, `CHANGES_REQUESTED`, and `NEEDS_CONTEXT`. Treat invalid JSON as `NEEDS_CONTEXT`. Treat `APPROVED` with feedback, `COMMENTED` with blocking or medium/high/critical feedback, `CHANGES_REQUESTED` without blocking feedback, missing `summary`, `NEEDS_CONTEXT` with feedback, and line `0` as invalid reviewer output.
 
 5. **Aggregate mechanically.**
    - Any `CHANGES_REQUESTED` means the final outcome is `CHANGES_REQUESTED`.
    - Else any `NEEDS_CONTEXT` means refresh staged context and rerun that reviewer once. If it still needs context, stop without committing.
    - Else any `COMMENTED` means the final outcome is `COMMENTED`.
    - Else the final outcome is `APPROVED`.
+   - Inject the reviewer id into each aggregated feedback item mechanically; do not rely on reviewers to repeat it.
+   - Keep reviewer protocol failures and context gaps in `reviewers` metadata, not in `feedback` severity counts.
 
 6. **Resolve blocking feedback.**
    Fix true defects and re-stage fixes. If a blocking item is false positive, record a short dispute with staged evidence and rerun the reviewer. If blocking feedback remains after three rounds, stop and tell the user the change should be split or handled manually.
@@ -99,7 +110,7 @@ If the gate says the commit mode is unsupported, do not review yet. Stage change
      "counts": { "critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0 },
      "feedback": [],
      "reviewers": [
-       { "reviewer": "correctness", "outcome": "APPROVED" }
+       { "reviewer": "correctness", "outcome": "APPROVED", "summary": "No correctness defects found.", "status": "completed" }
      ]
    }
    ```
@@ -125,9 +136,10 @@ Verdict: APPROVED | COMMENTED | CHANGES_REQUESTED | NEEDS_CONTEXT
 Summary: <=3 sentences
 Counts: critical/high/medium/low/info
 Feedback: [ {reviewer, severity, path, line, title, impact, evidence, recommendation, blocking} ... ]
+Reviewers: [ {reviewer, outcome, summary, status, error?} ... ]
 ```
 
-Keep the user-facing summary concise. Include full feedback only when there are comments or requested changes.
+Keep the user-facing summary concise. Include full feedback only when there are comments or requested changes. Always include reviewer metadata when a reviewer returned `NEEDS_CONTEXT` or invalid JSON so review completeness is explicit.
 
 ## Validation
 

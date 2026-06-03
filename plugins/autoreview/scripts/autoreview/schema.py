@@ -8,7 +8,7 @@ AUTHORIZING_OUTCOMES = ("APPROVED", "COMMENTED")
 SEVERITIES = ("critical", "high", "medium", "low", "info")
 COUNT_KEYS = SEVERITIES
 FEEDBACK_KEYS = ("severity", "path", "line", "title", "impact", "evidence", "recommendation", "blocking")
-REVIEWER_RESULT_KEYS = ("reviewer", "outcome", "feedback")
+REVIEWER_RESULT_KEYS = ("reviewer", "outcome", "summary", "feedback")
 MARKER_PAYLOAD_KEYS = ("outcome", "counts", "feedback", "reviewers")
 
 
@@ -30,8 +30,8 @@ def _is_non_empty_string(value) -> bool:
     return isinstance(value, str) and bool(value.strip())
 
 
-def _is_int_or_none(value) -> bool:
-    return value is None or (isinstance(value, int) and not isinstance(value, bool) and value >= 0)
+def _is_positive_int_or_none(value) -> bool:
+    return value is None or (isinstance(value, int) and not isinstance(value, bool) and value > 0)
 
 
 def _is_nonblocking_low_or_info(item: dict) -> bool:
@@ -43,7 +43,7 @@ def validate_feedback_item(item: dict) -> dict:
     _require_keys(item, FEEDBACK_KEYS, "feedback item")
     _require(item["severity"] in SEVERITIES, "unknown severity")
     _require(isinstance(item["path"], str), "path must be a string")
-    _require(_is_int_or_none(item["line"]), "line must be a non-negative integer or null")
+    _require(_is_positive_int_or_none(item["line"]), "line must be a positive integer or null")
     for key in ("title", "impact", "evidence", "recommendation"):
         _require(_is_non_empty_string(item[key]), "%s must be a non-empty string" % key)
     _require(isinstance(item["blocking"], bool), "blocking must be a boolean")
@@ -55,11 +55,10 @@ def validate_reviewer_result(data: dict) -> dict:
     _require_keys(data, REVIEWER_RESULT_KEYS, "reviewer result")
     _require(_is_non_empty_string(data["reviewer"]), "reviewer must be a non-empty string")
     _require(data["outcome"] in OUTCOMES, "unknown outcome")
+    _require(_is_non_empty_string(data["summary"]), "summary must be a non-empty string")
     _require(isinstance(data["feedback"], list), "feedback must be an array")
     for item in data["feedback"]:
         validate_feedback_item(item)
-    if "summary" in data:
-        _require(isinstance(data["summary"], str), "summary must be a string")
 
     outcome = data["outcome"]
     feedback = data["feedback"]
@@ -70,24 +69,21 @@ def validate_reviewer_result(data: dict) -> dict:
                  "COMMENTED permits only non-blocking low/info feedback")
     elif outcome == "CHANGES_REQUESTED":
         _require(any(f["blocking"] for f in feedback), "CHANGES_REQUESTED requires blocking feedback")
+    elif outcome == "NEEDS_CONTEXT":
+        _require(feedback == [], "NEEDS_CONTEXT requires empty feedback")
     return data
 
 
-def _needs_context_result(reviewer: str, reason: str) -> dict:
+def _needs_context_result(reviewer: str, reason: str, kind: str) -> dict:
     return {
         "reviewer": reviewer,
         "outcome": "NEEDS_CONTEXT",
         "summary": reason,
-        "feedback": [{
-            "severity": "high",
-            "path": "",
-            "line": None,
-            "title": "Reviewer output could not be used",
-            "impact": reason,
-            "evidence": "The reviewer did not return valid autoreview JSON.",
-            "recommendation": "Refresh staged context and rerun this reviewer.",
-            "blocking": True,
-        }],
+        "feedback": [],
+        "review_error": {
+            "kind": kind,
+            "message": reason,
+        },
     }
 
 
@@ -95,8 +91,10 @@ def coerce_reviewer_result(reviewer: str, raw: str) -> dict:
     try:
         data = json.loads(raw)
         return validate_reviewer_result(data)
+    except json.JSONDecodeError as exc:
+        return _needs_context_result(reviewer, str(exc), "invalid_json")
     except Exception as exc:
-        return _needs_context_result(reviewer, str(exc))
+        return _needs_context_result(reviewer, str(exc), "invalid_schema")
 
 
 def _empty_counts() -> Dict[str, int]:
@@ -115,8 +113,20 @@ def aggregate_results(results: List[dict]) -> dict:
     feedback: List[dict] = []
     reviewers: List[dict] = []
     for result in validated:
-        feedback.extend(result["feedback"])
-        reviewers.append({"reviewer": result["reviewer"], "outcome": result["outcome"]})
+        reviewer = result["reviewer"]
+        feedback.extend(dict(item, reviewer=reviewer) for item in result["feedback"])
+        reviewer_summary = {
+            "reviewer": reviewer,
+            "outcome": result["outcome"],
+            "summary": result["summary"],
+            "status": "completed",
+        }
+        if result["outcome"] == "NEEDS_CONTEXT":
+            reviewer_summary["status"] = "needs_context"
+        if "review_error" in result:
+            reviewer_summary["status"] = result["review_error"]["kind"]
+            reviewer_summary["error"] = result["review_error"]["message"]
+        reviewers.append(reviewer_summary)
 
     outcomes = [r["outcome"] for r in validated]
     if any(o == "CHANGES_REQUESTED" for o in outcomes):

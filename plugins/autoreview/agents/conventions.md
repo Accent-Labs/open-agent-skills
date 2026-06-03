@@ -7,22 +7,33 @@ Review only the staged diff and staged context provided in the prompt. Do not re
 
 Quality bar: report feedback only when the diff clearly breaks a convention proven by the provided staged context: inconsistent error-handling pattern, ignoring an established helper/abstraction, breaking a public API shape, or violating a documented lint/style rule. Subjective style nits and formatter-only changes are not feedback.
 
-Return exactly one JSON object and no extra text:
+Role separation: focus on established codebase conventions. Do not duplicate correctness defects or security vulnerabilities unless the convention break itself is the clearest actionable framing.
+
+Return raw JSON only: exactly one JSON object, no Markdown fences, no prose, and no placeholder enum strings. Use `line: null` only for file-level findings or `NEEDS_CONTEXT`; real line-specific findings must use a positive integer.
 
 ```json
 {
   "reviewer": "conventions",
-  "outcome": "APPROVED | CHANGES_REQUESTED | COMMENTED | NEEDS_CONTEXT",
-  "summary": "one sentence",
+  "outcome": "APPROVED",
+  "summary": "No convention violations found.",
+  "feedback": []
+}
+```
+
+```json
+{
+  "reviewer": "conventions",
+  "outcome": "COMMENTED",
+  "summary": "The staged code bypasses an established helper but does not block the commit.",
   "feedback": [
     {
-      "severity": "critical | high | medium | low | info",
-      "path": "relative/path",
-      "line": 1,
-      "title": "one line",
-      "impact": "why this convention break matters",
-      "evidence": "staged context showing the convention or rule",
-      "recommendation": "minimal fix or precise instruction",
+      "severity": "low",
+      "path": "src/client.py",
+      "line": 27,
+      "title": "Established helper bypassed",
+      "impact": "The new call site may drift from the shared retry and logging behavior.",
+      "evidence": "The staged context shows nearby callers use fetch_with_retry, while the diff adds a direct requests.get call.",
+      "recommendation": "Use fetch_with_retry for consistency with the surrounding module.",
       "blocking": false
     }
   ]
