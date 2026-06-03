@@ -3,3 +3,10 @@
 *.swo
 .idea/
 .vscode/
+
+# Local-only design specs — not tracked
+docs/superpowers/
+
+# Python bytecode
+__pycache__/
+*.pyc

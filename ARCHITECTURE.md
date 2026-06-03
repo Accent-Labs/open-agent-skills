@@ -18,12 +18,26 @@ plugins/
       plugin.json           # Claude Code per-plugin manifest
     .codex-plugin/
       plugin.json           # Codex per-plugin manifest
+    hooks.json              # (optional) compatibility copy of plugin hooks
+    hooks/
+      hooks.json            # (optional) primary plugin hooks
+    scripts/                # (optional) executable helpers a hook/skill invokes
+    agents/
+      <id>.md               # (optional) provider-neutral reviewer profiles
     skills/
       <skill-name>/
         SKILL.md            # The skill document (frontmatter + markdown)
 AGENTS.md                   # AI coding agent entrypoint
 README.md                   # Human-facing project overview
 ```
+
+### Hooks (plugin component)
+
+A plugin may ship lifecycle hooks. The primary hook file is `hooks/hooks.json`; plugins may also
+ship a root-level `hooks.json` compatibility copy when targeting hosts that have used that location.
+When both files exist they must stay byte-identical. Hook commands should resolve the plugin install
+directory through host-provided plugin-root environment variables with a relative fallback. Any
+runtime a hook shells out to, such as `python3`, must be treated as optional and fail open if absent.
 
 ## Supported Agents
 
@@ -80,6 +94,7 @@ Claude Code resolves marketplace plugins in `strict` mode by default, which expe
 | `name`, `version`, `description` | Required package identity metadata |
 | `author` | Publisher metadata |
 | `skills` | Relative path to the skill directory; currently always `./skills/` |
+| `hooks` | Optional relative path to the primary hooks file, such as `./hooks/hooks.json` |
 | `interface` | Codex install-surface display metadata |
 
 Every registry and manifest should list the same plugins in the same order unless a tool-specific compatibility issue requires an exception.
@@ -127,11 +142,21 @@ description: <trigger text> # Multi-sentence description of when a coding tool s
 
 ### `autoreview`
 
-Automated code review for AI coding agents.
+A deterministic pre-commit review gate. A `PreToolUse` hook on `git commit` runs a zero-LLM Python
+gate (`scripts/gate.py`, behind the fail-open `scripts/gate.sh` wrapper) over the staged change.
+Trivial changes pass silently; non-trivial, sensitive, or hand-resolved-merge changes are blocked
+(exit 2) with a directive to run the `autoreview` skill. The skill launches provider-neutral
+reviewer profiles from `agents/*.md`, requires strict JSON outcomes, and lets the agent address
+blocking feedback before re-committing. A content-keyed pass-marker in the repo's git dir, never
+committed, records only approved or non-blocking reviewed outcomes. The gate requires `python3` and
+fails open if it is absent.
 
-| Skill | Covers |
+| Component | Purpose |
 |---|---|
-| `autoreview` | _Stub — content in progress._ Review of working-tree or staged changes for correctness, style, convention, and risk issues before a commit or pull request |
+| `scripts/` | `gate.py` (gate + `mark`), `gitcmd.py`/`diffparse.py`/`classify.py`/`markers.py`/`schema.py`/`core.py`/`cli.py` package, `gate.sh` wrapper, tests |
+| `hooks.json` + `hooks/hooks.json` | `PreToolUse -> Bash` wiring kept byte-identical for host compatibility |
+| `agents/{correctness,security,conventions}.md` | Provider-neutral reviewer profiles that return strict JSON |
+| `skills/autoreview/SKILL.md` | Orchestration: gather staged context, launch reviewers, aggregate outcomes, resolve feedback, marker + re-commit |
 
 ## Adding a Plugin
 

@@ -31,11 +31,14 @@ See `ARCHITECTURE.md` for the plugin and skill format conventions.
 
 ### `autoreview`
 
-Automated code review for AI coding agents — review local changes and diffs for correctness, style, convention, and risk issues before committing or opening a pull request.
+A deterministic pre-commit review gate. A git-commit hook runs a fast, zero-LLM check over the staged change and, for non-trivial / sensitive / hand-resolved-merge changes, blocks the commit and asks the agent to run a multi-perspective review (correctness, security, conventions) before re-committing. Truly trivial changes (docs, small diffs) pass silently; sensitive changes such as dependency manifests, CI, Dockerfiles, migrations, and auth/security paths always get reviewed even when small. After the host installs and trusts/enables the hook, there is no runtime setup beyond `python3`; the gate fails open if it is missing.
 
-| Skill | Description |
+| Component | Description |
 |---|---|
-| `autoreview` | _Stub — skill content in progress._ Automated review of working-tree or staged changes for correctness bugs, style and convention violations, and risky patterns |
+| `autoreview` skill | Launches provider-neutral reviewer profiles over staged diff/context, aggregates strict JSON outcomes, and drives a fix-or-dispute loop before re-committing |
+| pre-commit hook | A `PreToolUse` hook on `git commit` that runs the deterministic gate (Python, fail-open) and blocks risky commits with a directive to review |
+
+See `plugins/autoreview/README.md` for the plugin contract, schema, validation matrix, and hook trust notes.
 
 ## Installing
 

@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'g=\"${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}/scripts/gate.sh\"; [ -f \"$g\" ] && exec sh \"$g\" || exit 0'",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
+}
