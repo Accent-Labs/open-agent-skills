@@ -62,11 +62,11 @@ def decide_gate(inp: dict, git_factory=Git) -> Decision:
     # (-a/-am, --amend, pathspec, interactive, staging, multiple commits, or a form that changes the
     # cwd/repo/index — cd/git -C/GIT_* env/env -S/time/unknown wrappers).
     flags_list = [diffparse.parse_commit_flags(a) for a in commits]
+    if any(f.all or f.amend or f.pathspec or f.interactive for f in flags_list):
+        return Decision(BLOCK, UNSUPPORTED_DIRECTIVE)
     # Honor explicit --no-verify only for a single cleanly-parsed plain commit in the hook cwd.
     if len(commits) == 1 and not unsafe and not has_mutator and flags_list[0].no_verify:
         return Decision(ALLOW)  # explicit bypass (cli logs the warning)
-    if any(f.all or f.amend or f.pathspec or f.interactive for f in flags_list):
-        return Decision(BLOCK, UNSUPPORTED_DIRECTIVE)
     if unsafe or has_mutator or len(commits) != 1:
         return Decision(BLOCK, COMPOUND_DIRECTIVE)
 

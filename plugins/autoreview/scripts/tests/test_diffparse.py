@@ -107,6 +107,9 @@ class TestUnsafe(unittest.TestCase):
                     "GIT_INDEX_FILE=/tmp/i git commit -m x",
                     "GIT_DIR=/x git commit -m x",
                     "env GIT_DIR=/x git commit -m x",
+                    "env -C /other git commit -m x",
+                    "env --chdir /other git commit -m x",
+                    "env --chdir=/other git commit -m x",
                     'env -S "git commit -m x"',
                     "time git commit -m x",
                     "sudo git commit -m x",
@@ -132,8 +135,11 @@ class TestUnsafe(unittest.TestCase):
         for cmd in (
             "sh -c 'git commit -m x'",
             "sh -c 'git -c user.name=t commit -m x'",
+            "sh -lc 'git commit -m x'",
             'bash -c "git commit -m x"',
+            'bash -lc "git commit -m x"',
             'zsh -c "git commit -m x"',
+            'zsh -ec "git commit -m x"',
             "eval 'git commit -m x'",
             "echo $(git commit -m x)",
             "echo $(/usr/bin/git commit -m x)",
@@ -144,6 +150,24 @@ class TestUnsafe(unittest.TestCase):
             _, _, unsafe, has_commit = d.analyze_command(cmd)
             self.assertTrue(unsafe, cmd)
             self.assertTrue(has_commit, cmd)
+
+    def test_non_read_only_git_before_commit_counts_as_mutator(self):
+        for cmd in (
+            "git update-index --add src/a.js && git commit -m x",
+            "git checkout -- src/a.js && git commit -m x",
+        ):
+            commits, mut, unsafe, has_commit = d.analyze_command(cmd)
+            self.assertEqual(commits, [["-m", "x"]], cmd)
+            self.assertTrue(mut, cmd)
+            self.assertFalse(unsafe, cmd)
+            self.assertTrue(has_commit, cmd)
+
+    def test_read_only_git_before_commit_does_not_count_as_mutator(self):
+        commits, mut, unsafe, has_commit = d.analyze_command("git status && git commit -m x")
+        self.assertEqual(commits, [["-m", "x"]])
+        self.assertFalse(mut)
+        self.assertFalse(unsafe)
+        self.assertTrue(has_commit)
 
 
 if __name__ == '__main__':

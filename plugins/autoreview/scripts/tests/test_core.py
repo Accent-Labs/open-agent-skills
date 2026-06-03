@@ -55,6 +55,17 @@ class TestDecideGate(unittest.TestCase):
     def test_no_verify_allows(self):
         self.assertEqual(decide(FakeGit(numstat=NONTRIVIAL), "git commit --no-verify -m x").action, "ALLOW")
 
+    def test_no_verify_does_not_allow_unsupported_modes(self):
+        for cmd in (
+            "git commit -am wip --no-verify",
+            "git commit --amend --no-verify",
+            "git commit --pathspec-from-file=p.txt --no-verify -m x",
+            "git commit --patch --no-verify",
+        ):
+            dec = decide(FakeGit(numstat=NONTRIVIAL), cmd)
+            self.assertEqual(dec.action, "BLOCK", cmd)
+            self.assertIn("plain staged commits", dec.message)
+
     def test_unsupported_modes_block(self):
         for cmd in ("git commit --amend", "git commit -am wip", "git commit -m x file.py"):
             dec = decide(FakeGit(numstat=NONTRIVIAL), cmd)
@@ -99,9 +110,13 @@ class TestDecideGate(unittest.TestCase):
 
     def test_compound_stage_and_commit_blocks(self):
         # even a trivial CURRENT staged tree must block: `git add` stages extra content at run time
-        dec = decide(FakeGit(numstat=TRIVIAL), "git add risky.py && git commit -m x")
-        self.assertEqual(dec.action, "BLOCK")
-        self.assertIn("single plain", dec.message)
+        for cmd in (
+            "git add risky.py && git commit -m x",
+            "git update-index --add src/a.js && git commit -m x",
+        ):
+            dec = decide(FakeGit(numstat=TRIVIAL), cmd)
+            self.assertEqual(dec.action, "BLOCK", cmd)
+            self.assertIn("single plain", dec.message)
 
     def test_multiple_commits_block(self):
         self.assertEqual(decide(FakeGit(numstat=TRIVIAL), "git commit -m a && git commit -m b").action, "BLOCK")
@@ -118,6 +133,9 @@ class TestDecideGate(unittest.TestCase):
         for cmd in ("cd /other && git commit -m x",
                     "git -C /other commit -m x",
                     "GIT_INDEX_FILE=/tmp/i git commit -m x",
+                    "env -C /other git commit -m x",
+                    "env --chdir /other git commit -m x",
+                    "env --chdir=/other git commit -m x",
                     'env -S "git commit -m x"',
                     "time git commit -m x"):
             self.assertEqual(decide(FakeGit(numstat=TRIVIAL), cmd).action, "BLOCK", cmd)
@@ -126,6 +144,9 @@ class TestDecideGate(unittest.TestCase):
         for cmd in (
             "git add risky.py\ngit commit -m x",
             "sh -c 'git commit -m x'",
+            "sh -lc 'git commit -m x'",
+            'bash -lc "git commit -m x"',
+            'zsh -ec "git commit -m x"',
             "echo $(git commit -m x)",
             "echo `git commit -m x`",
             'g(){ git "$@"; }; g commit -m x',

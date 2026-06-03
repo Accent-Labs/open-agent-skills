@@ -97,7 +97,12 @@ def tokenize_segment(segment: str) -> List[str]:
 _ENV_ASSIGN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 _GIT_ENV = re.compile(r"^GIT_[A-Za-z0-9_]*=")  # GIT_DIR/GIT_INDEX_FILE/GIT_WORK_TREE/... redirect git
 GIT_GLOBAL_VALUE_OPTS = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path"}
-GIT_INDEX_MUTATORS = {"add", "rm", "mv", "reset", "restore", "stash", "apply"}
+GIT_INDEX_MUTATORS = {"add", "rm", "mv", "reset", "restore", "stash", "apply", "update-index"}
+GIT_READ_ONLY_COMMANDS = {
+    "cat-file", "check-attr", "check-ignore", "describe", "diff", "diff-files", "diff-index",
+    "diff-tree", "for-each-ref", "grep", "log", "ls-files", "ls-tree", "merge-base",
+    "name-rev", "rev-list", "rev-parse", "show", "show-ref", "status",
+}
 _WRAPPERS = {"command", "builtin", "exec", "nohup"}     # transparent single-token wrappers we can model
 _SHELLS = {"sh", "bash", "zsh"}
 _EVALS = {"eval"}
@@ -130,6 +135,10 @@ def _strip_env(tokens: List[str]) -> List[str]:
             continue
         break
     return tokens[i:]
+
+
+def _env_changes_cwd(tokens: List[str]) -> bool:
+    return any(t in ("-C", "--chdir") or t.startswith("--chdir=") for t in tokens)
 
 
 def _wrapped_git_commit(tokens: List[str]) -> bool:
@@ -171,6 +180,13 @@ def _env_split_value(rest: List[str]) -> Optional[str]:
         if t.startswith("-S") and len(t) > 2:
             return t[2:]
     return None
+
+
+def _shell_command_args(tokens: List[str]) -> List[str]:
+    for j, t in enumerate(tokens[1:], start=1):
+        if t.startswith("-") and t != "-" and "c" in t[1:]:
+            return tokens[j + 1:]
+    return []
 
 
 def analyze_command(command: str):
@@ -215,12 +231,15 @@ def analyze_command(command: str):
                     has_commit = True
                 continue
             inner = _strip_env(rest)
+            if _env_changes_cwd(rest[: len(rest) - len(inner)]):
+                unsafe = True
             if any(_GIT_ENV.match(t) for t in rest[: len(rest) - len(inner)]):
                 unsafe = True  # GIT_* assignment passed through env
             tokens = inner
             head = tokens[0] if tokens else ""
         if head in _SHELLS:
-            if "-c" in tokens and any(_contains_git_commit_text(t) for t in tokens):
+            command_args = _shell_command_args(tokens)
+            if command_args and any(_contains_git_commit_text(t) for t in command_args):
                 unsafe = True
                 has_commit = True
             continue
@@ -262,7 +281,7 @@ def analyze_command(command: str):
             if sub == "commit":
                 commits.append(tokens[i + 1:])
                 has_commit = True
-            elif sub in GIT_INDEX_MUTATORS:
+            elif sub in GIT_INDEX_MUTATORS or sub not in GIT_READ_ONLY_COMMANDS:
                 has_mutator = True
     return commits, has_mutator, unsafe, has_commit
 
