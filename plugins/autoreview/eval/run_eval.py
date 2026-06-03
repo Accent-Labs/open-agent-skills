@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import json
 import os
 import subprocess
@@ -14,12 +15,15 @@ GATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts",
 
 def new_repo():
     d = tempfile.mkdtemp(prefix="areval-")
-    g = lambda *a: subprocess.run(["git", *a], cwd=d, capture_output=True, text=True, check=True).stdout  # noqa: E731
-    g("init", "-q", "-b", "main")
-    g("config", "user.email", "t@t")
-    g("config", "user.name", "t")
-    g("commit", "--allow-empty", "-q", "-m", "root")
-    return d, g
+
+    def git(*args):
+        return subprocess.run(["git", *args], cwd=d, capture_output=True, text=True, check=True).stdout
+
+    git("init", "-q", "-b", "main")
+    git("config", "user.email", "t@t")
+    git("config", "user.name", "t")
+    git("commit", "--allow-empty", "-q", "-m", "root")
+    return d, git
 
 
 def _put(d, content):

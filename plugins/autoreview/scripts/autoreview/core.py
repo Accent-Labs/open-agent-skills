@@ -1,10 +1,12 @@
 from __future__ import annotations
+
 import os
 from typing import List, Optional
+
 from . import diffparse, markers
 from .classify import classify
 from .gitcmd import Git
-from .models import Decision, FileDelta, ALLOW, BLOCK, SKIP
+from .models import ALLOW, BLOCK, SKIP, Decision, FileDelta
 
 # Absolute install dir of this plugin (…/plugins/autoreview), derived from this file's location so
 # the skill can locate scripts/ even if $CLAUDE_PLUGIN_ROOT/$PLUGIN_ROOT are unset in its context.
@@ -34,7 +36,8 @@ def _safe_path(p: str) -> str:
 def review_directive(reason: str, files: Optional[List[FileDelta]]) -> str:
     if files:
         names = ", ".join(_safe_path(f.path) for f in files[:20])
-        stats = f"Change: {len(files)} files{(' - ' + names) if names else ''}. "
+        preview = f" - {names}" if names else ""
+        stats = f"Change: {len(files)} files{preview}. "
     else:
         stats = ""
     return (f"Autoreview required ({reason}). Invoke the `autoreview` skill now: review the staged "
@@ -62,12 +65,14 @@ def decide_gate(inp: dict, git_factory=Git) -> Decision:
     # (-a/-am, --amend, pathspec, interactive, staging, multiple commits, or a form that changes the
     # cwd/repo/index — cd/git -C/GIT_* env/env -S/time/unknown wrappers).
     flags_list = [diffparse.parse_commit_flags(a) for a in commits]
-    if any(f.all or f.amend or f.pathspec or f.interactive for f in flags_list):
+    has_unsupported_flags = any(f.all or f.amend or f.pathspec or f.interactive for f in flags_list)
+    clean_plain_commit = len(commits) == 1 and not unsafe and not has_mutator
+    if has_unsupported_flags:
         return Decision(BLOCK, UNSUPPORTED_DIRECTIVE)
     # Honor explicit --no-verify only for a single cleanly-parsed plain commit in the hook cwd.
-    if len(commits) == 1 and not unsafe and not has_mutator and flags_list[0].no_verify:
+    if clean_plain_commit and flags_list[0].no_verify:
         return Decision(ALLOW)  # explicit bypass (cli logs the warning)
-    if unsafe or has_mutator or len(commits) != 1:
+    if not clean_plain_commit:
         return Decision(BLOCK, COMPOUND_DIRECTIVE)
 
     merge_forces = False

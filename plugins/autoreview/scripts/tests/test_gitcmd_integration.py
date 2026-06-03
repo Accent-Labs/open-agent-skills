@@ -1,14 +1,19 @@
 from __future__ import annotations
+
 import os
 import subprocess
 import tempfile
 import unittest
+
 from autoreview.gitcmd import Git
 
 
 def mkrepo():
     d = tempfile.mkdtemp(prefix="ar-")
-    run = lambda *a: subprocess.run(["git", *a], cwd=d, capture_output=True, text=True, check=True)  # noqa: E731
+
+    def run(*args):
+        return subprocess.run(["git", *args], cwd=d, capture_output=True, text=True, check=True)
+
     run("init", "-q", "-b", "main")
     run("config", "user.email", "t@t")
     run("config", "user.name", "t")
@@ -52,11 +57,17 @@ class TestGit(unittest.TestCase):
 
     def test_clean_merge_does_not_force_review(self):
         d, run = mkrepo()
-        write(os.path.join(d, "base.txt"), "base\n"); run("add", "base.txt"); run("commit", "-q", "-m", "base")
+        write(os.path.join(d, "base.txt"), "base\n")
+        run("add", "base.txt")
+        run("commit", "-q", "-m", "base")
         run("checkout", "-q", "-b", "feature")
-        write(os.path.join(d, "f.txt"), "feature\n"); run("add", "f.txt"); run("commit", "-q", "-m", "f")
+        write(os.path.join(d, "f.txt"), "feature\n")
+        run("add", "f.txt")
+        run("commit", "-q", "-m", "f")
         run("checkout", "-q", "main")
-        write(os.path.join(d, "m.txt"), "main\n"); run("add", "m.txt"); run("commit", "-q", "-m", "m")
+        write(os.path.join(d, "m.txt"), "main\n")
+        run("add", "m.txt")
+        run("commit", "-q", "-m", "m")
         try:
             run("merge", "--no-commit", "--no-ff", "feature")  # non-conflicting; pause before commit
         except subprocess.CalledProcessError:

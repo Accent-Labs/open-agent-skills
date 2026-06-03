@@ -1,5 +1,6 @@
 from __future__ import annotations
-from typing import NamedTuple, Optional
+
+from typing import List, NamedTuple, Optional
 
 # action vocabularies
 ALLOW, BLOCK = "ALLOW", "BLOCK"
@@ -21,6 +22,13 @@ class Flags(NamedTuple):
     no_verify: bool = False
     pathspec: bool = False
     interactive: bool = False   # -p / --patch / --interactive (commits selected non-staged hunks)
+
+
+class CommandAnalysis(NamedTuple):
+    commits: List[List[str]]
+    has_mutator: bool
+    unsafe: bool
+    has_commit: bool
 
 
 class Classification(NamedTuple):

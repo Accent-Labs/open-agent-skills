@@ -1,6 +1,8 @@
 from __future__ import annotations
+
 import tempfile
 import unittest
+
 from autoreview import core, markers
 
 
@@ -44,7 +46,11 @@ APPROVED_MARKER = {
 
 def decide(fake, command="git commit -m x"):
     inp = {"cwd": fake.cwd, "tool_input": {"command": command}}
-    return core.decide_gate(inp, git_factory=lambda cwd: fake)
+
+    def git_factory(_cwd):
+        return fake
+
+    return core.decide_gate(inp, git_factory=git_factory)
 
 
 class TestDecideGate(unittest.TestCase):

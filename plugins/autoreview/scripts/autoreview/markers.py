@@ -1,9 +1,11 @@
 from __future__ import annotations
+
 import json
 import os
 import re
 import tempfile
 import time
+
 from .schema import validate_marker_payload
 
 MARKER_VERSION = "2"

@@ -1,7 +1,9 @@
 from __future__ import annotations
+
 import re
-from typing import List, Optional
-from .models import FileDelta, Flags
+from typing import List, Optional, Tuple
+
+from .models import CommandAnalysis, FileDelta, Flags
 
 # ---------- shell-aware tokenization ----------
 
@@ -116,8 +118,14 @@ def _is_git_token(token: str) -> bool:
     return token == "git" or token.endswith("/git")
 
 
-def _strip_env(tokens: List[str]) -> List[str]:
-    """tokens follow `env`; skip its options and NAME=VALUE assignments, return the command tokens."""
+def _env_option_width(token: str) -> int:
+    if token in ("-u", "--unset", "-C", "--chdir", "-S", "--split-string"):
+        return 2
+    return 1
+
+
+def _split_env(tokens: List[str]) -> Tuple[List[str], List[str]]:
+    """Split tokens after `env` into env options/assignments and the command tokens."""
     i = 0
     while i < len(tokens):
         t = tokens[i]
@@ -127,14 +135,31 @@ def _strip_env(tokens: List[str]) -> List[str]:
         if _ENV_ASSIGN.match(t):
             i += 1
             continue
-        if t in ("-u", "--unset", "-C", "--chdir", "-S", "--split-string"):
-            i += 2
-            continue
         if t.startswith("-") and t != "-":
-            i += 1
+            i += _env_option_width(t)
             continue
         break
-    return tokens[i:]
+    return tokens[:i], tokens[i:]
+
+
+def _git_global_option_width(token: str) -> int:
+    return 2 if token in GIT_GLOBAL_VALUE_OPTS else 1
+
+
+def _git_subcommand_index(tokens: List[str], start: int = 1) -> int:
+    i = start
+    while i < len(tokens) and tokens[i].startswith("-"):
+        i += _git_global_option_width(tokens[i])
+    return i
+
+
+def _git_global_options_redirect_repo(tokens: List[str], start: int = 1) -> bool:
+    i = start
+    while i < len(tokens) and tokens[i].startswith("-"):
+        if tokens[i].split("=", 1)[0] in _REPO_REDIRECT_GLOBALS:
+            return True
+        i += _git_global_option_width(tokens[i])
+    return False
 
 
 def _env_changes_cwd(tokens: List[str]) -> bool:
@@ -147,9 +172,7 @@ def _wrapped_git_commit(tokens: List[str]) -> bool:
     NOT matched."""
     for j in range(len(tokens) - 1):
         if _is_git_token(tokens[j]):
-            k = j + 1
-            while k < len(tokens) and tokens[k].startswith("-"):
-                k += 2 if tokens[k] in GIT_GLOBAL_VALUE_OPTS else 1
+            k = _git_subcommand_index(tokens, j + 1)
             if k < len(tokens) and tokens[k] == "commit":
                 return True
     return False
@@ -189,7 +212,7 @@ def _shell_command_args(tokens: List[str]) -> List[str]:
     return []
 
 
-def analyze_command(command: str):
+def analyze_command(command: str) -> CommandAnalysis:
     """Classify a Bash command for the gate. Returns (commits, has_mutator, unsafe, has_commit):
 
     - commits: arg-token-lists for each cleanly-parsed DIRECT `git commit` (first token `git`).
@@ -230,10 +253,10 @@ def analyze_command(command: str):
                 if _wrapped_git_commit(tokenize_segment(sval)):
                     has_commit = True
                 continue
-            inner = _strip_env(rest)
-            if _env_changes_cwd(rest[: len(rest) - len(inner)]):
+            env_options, inner = _split_env(rest)
+            if _env_changes_cwd(env_options):
                 unsafe = True
-            if any(_GIT_ENV.match(t) for t in rest[: len(rest) - len(inner)]):
+            if any(_GIT_ENV.match(t) for t in env_options):
                 unsafe = True  # GIT_* assignment passed through env
             tokens = inner
             head = tokens[0] if tokens else ""
@@ -271,11 +294,9 @@ def analyze_command(command: str):
                 has_commit = True
             continue
         # direct git invocation: walk global options
-        i = 1
-        while i < len(tokens) and tokens[i].startswith("-"):
-            if tokens[i].split("=", 1)[0] in _REPO_REDIRECT_GLOBALS:
-                unsafe = True
-            i += 2 if tokens[i] in GIT_GLOBAL_VALUE_OPTS else 1
+        if _git_global_options_redirect_repo(tokens):
+            unsafe = True
+        i = _git_subcommand_index(tokens)
         if i < len(tokens):
             sub = tokens[i]
             if sub == "commit":
@@ -283,7 +304,7 @@ def analyze_command(command: str):
                 has_commit = True
             elif sub in GIT_INDEX_MUTATORS or sub not in GIT_READ_ONLY_COMMANDS:
                 has_mutator = True
-    return commits, has_mutator, unsafe, has_commit
+    return CommandAnalysis(commits, has_mutator, unsafe, has_commit)
 
 
 def scan_commits(command: str):

@@ -1,8 +1,10 @@
 from __future__ import annotations
+
 import argparse
 import json
 import os
 import sys
+
 from . import diffparse, markers
 from .core import decide_gate
 from .gitcmd import Git
@@ -52,7 +54,7 @@ def main(argv=None) -> None:
         sys.stderr.write(decision.message + "\n")
         sys.exit(2)
     cmd = (inp.get("tool_input") or {}).get("command", "") or ""
-    commits, _ = diffparse.scan_commits(cmd)
-    if any(diffparse.parse_commit_flags(a).no_verify for a in commits):
+    analysis = diffparse.analyze_command(cmd)
+    if any(diffparse.parse_commit_flags(a).no_verify for a in analysis.commits):
         _warn("commit uses --no-verify; autoreview bypassed")
     sys.exit(0)
