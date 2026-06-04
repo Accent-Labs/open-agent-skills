@@ -14,18 +14,20 @@ PLUGIN_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__
 
 UNSUPPORTED_DIRECTIVE = (
     "Autoreview supports plain staged commits only. Stage your changes explicitly (`git add ...`) "
-    "and run a plain `git commit` (or `rtk git commit` in rtk-prefixed environments); do not use "
+    "and run a plain `git commit` or direct `git -C <worktree> commit` "
+    "(or the same command prefixed with `rtk` in rtk-prefixed environments); do not use "
     "-a/-am/--amend/--patch/--interactive/<pathspec>. "
     "(No autoreview marker is written for this command form.)"
 )
 
 COMPOUND_DIRECTIVE = (
     "Autoreview can only verify a single plain `git commit` of the staged tree in the current "
-    "directory, including `rtk git commit` when commands must be rtk-prefixed. Run nothing in the "
-    "same command that changes what gets committed — no staging "
-    "(`git add` ...), no chained/multiple commits, no `cd`/`git -C`/`--git-dir`/`--work-tree`, no "
-    "GIT_* env overrides, and no `env -S`/`time`/unknown wrappers. Stage in this repo, then run a "
-    "plain commit command on its own."
+    "directory, or one direct `git -C <worktree> commit` for an explicit worktree target, including "
+    "`rtk`-prefixed forms when commands must be rtk-prefixed. Run nothing in the same command that "
+    "changes what gets committed — no staging (`git add` ...), no chained/multiple commits, no "
+    "shell `cd`, no `--git-dir`/`--work-tree`, no GIT_* env overrides, and no "
+    "`env -S`/`time`/unknown wrappers. Stage in the target repo, then run the plain commit command "
+    "on its own."
 )
 
 
@@ -48,16 +50,24 @@ def review_directive(reason: str, files: Optional[List[FileDelta]]) -> str:
             f"$CLAUDE_PLUGIN_ROOT/$PLUGIN_ROOT are unset.)").strip()
 
 
+def _effective_cwd(cwd: str, target_cwd: Optional[str]) -> str:
+    if target_cwd is None:
+        return cwd
+    if os.path.isabs(target_cwd):
+        return target_cwd
+    return os.path.abspath(os.path.join(cwd, target_cwd))
+
+
 def decide_gate(inp: dict, git_factory=Git) -> Decision:
     """Pure orchestration. Raises on internal error — cli.main() is the fail-open boundary."""
     cwd = inp.get("cwd") or os.getcwd()
     command = (inp.get("tool_input") or {}).get("command", "") or ""
 
-    commits, has_mutator, unsafe, has_commit = diffparse.analyze_command(command)
-    if not has_commit:
+    analysis = diffparse.analyze_command(command)
+    if not analysis.has_commit:
         return Decision(ALLOW)  # no git commit anywhere in this command
 
-    git = git_factory(cwd)
+    git = git_factory(_effective_cwd(cwd, analysis.target_cwd))
     state = git.detect_state()
     if state in ("cherry-pick", "revert", "rebase"):
         return Decision(ALLOW)  # never wedge an in-flight operation (it runs git commit internally)
@@ -65,10 +75,10 @@ def decide_gate(inp: dict, git_factory=Git) -> Decision:
     # Command-only decisions happen BEFORE the marker lookup, so a marker written for the staged
     # tree can never authorize a command whose effective commit content differs from that tree
     # (-a/-am, --amend, pathspec, interactive, staging, multiple commits, or a form that changes the
-    # cwd/repo/index — cd/git -C/GIT_* env/env -S/time/unknown wrappers).
-    flags_list = [diffparse.parse_commit_flags(a) for a in commits]
+    # repo/index in an unmodeled way — shell cd/GIT_* env/env -S/time/unknown wrappers).
+    flags_list = [diffparse.parse_commit_flags(a) for a in analysis.commits]
     has_unsupported_flags = any(f.all or f.amend or f.pathspec or f.interactive for f in flags_list)
-    clean_plain_commit = len(commits) == 1 and not unsafe and not has_mutator
+    clean_plain_commit = len(analysis.commits) == 1 and not analysis.unsafe and not analysis.has_mutator
     if has_unsupported_flags:
         return Decision(BLOCK, UNSUPPORTED_DIRECTIVE)
     # Honor explicit --no-verify only for a single cleanly-parsed plain commit in the hook cwd.

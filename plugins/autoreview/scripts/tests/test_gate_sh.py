@@ -60,6 +60,14 @@ class TestWrapper(unittest.TestCase):
         code, err = run('{"cwd":"%s","tool_input":{"command":"git commit -m x"}}' % d)
         self.assertEqual(code, 0, err)
 
+    def test_wrapper_allows_trivial_git_dash_c_target(self):
+        caller = new_repo()
+        target = new_repo()
+        stage(target, "README.md", 40)
+        payload = '{"cwd":"%s","tool_input":{"command":"git -C %s commit -m x"}}' % (caller, target)
+        code, err = run(payload)
+        self.assertEqual(code, 0, err)
+
     def test_wrapper_fail_opens_malformed_stdin(self):
         code, err = run("{not json")
         self.assertEqual(code, 0)

@@ -16,14 +16,28 @@
 
 ## Gate Contract
 
-The hook allows only one plain staged `git commit` in the hook working directory. Environments that prefix shell commands with `rtk` may use `rtk git commit ...`; the gate treats `rtk` as a transparent command proxy and still applies the same commit-shape checks to the wrapped command. It blocks unsupported forms before looking for a marker:
+The hook allows only one plain staged `git commit` in the hook working directory, or one direct `git -C <worktree> commit ...` for agents committing from an explicit worktree path. Environments that prefix shell commands with `rtk` may use `rtk git commit ...` or `rtk git -C <worktree> commit ...`; the gate treats `rtk` as a transparent command proxy and still applies the same commit-shape checks to the wrapped command. It blocks unsupported forms before looking for a marker:
 
 - `-a`, `-am`, `--amend`, `--patch`, `--interactive`, pathspec commits
 - multiple commits or compound commands that stage or mutate the index
-- `cd`, `git -C`, `--git-dir`, `--work-tree`, `GIT_*` index/repo overrides
+- shell directory changes such as `cd`, `pushd`, `env -C`, and `env --chdir`
+- `--git-dir`, `--work-tree`, `GIT_*` index/repo overrides
 - nested shell execution such as `sh -c`, `bash -c`, `zsh -c`, `eval`, command substitution, backticks, and inline function wrappers when a commit is present
 
 The parser is intentionally conservative. It does not emulate shell execution and cannot see aliases or functions that are defined outside the tool input.
+
+## Subagent Worktrees
+
+Subagents working in isolated worktrees should prefer running shell commands with the tool working directory set to that worktree. When that is not available, use `git -C "$WORKTREE"` consistently for every staged-tree operation:
+
+```sh
+git -C "$WORKTREE" diff --cached
+git -C "$WORKTREE" show :path
+python3 "${ROOT}/scripts/gate.py" mark --cwd "$WORKTREE" --payload '<JSON>'
+git -C "$WORKTREE" commit -m "subject"
+```
+
+Do not wrap the commit in `cd "$WORKTREE" && ...`, `sh -c`, or helper functions. Those forms are still unsupported because the gate does not emulate shell execution.
 
 ## Review Contract
 
@@ -79,6 +93,8 @@ The marker validator rejects malformed JSON, old verdict names, `CHANGES_REQUEST
 
 Authorizing marker payloads may include reviewer metadata such as `summary`, `status`, and `error`, but only `reviewer` and an authorizing `outcome` are required for each reviewer entry.
 
+When reviewing an explicit `git -C <worktree> commit` target from another directory, pass `--cwd <worktree>` to write the marker into that target repo's git dir.
+
 ## Validation
 
 Run the deterministic suite:
@@ -97,6 +113,7 @@ Recommended live checks before release:
 | Block contract | Confirm hook exit `2` blocks the commit and surfaces the autoreview directive |
 | Fail-open | Simulate missing Python or malformed hook input and confirm commit is not blocked |
 | Marker round trip | Run review, write an authorizing marker, confirm one plain commit is allowed and marker is consumed |
+| Worktree target | Run a staged `git -C <worktree> commit` from a different hook cwd and confirm the gate reads and writes markers in the target worktree |
 | Reviewer workflow | Confirm the host agent can launch the three profile workers and collect strict JSON |
 
 ## Runtime

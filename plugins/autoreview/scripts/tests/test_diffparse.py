@@ -103,9 +103,33 @@ class TestUnsafe(unittest.TestCase):
         self.assertEqual(d.analyze_command("rtk /usr/bin/git commit -m x"), ([["-m", "x"]], False, False, True))
         self.assertEqual(d.analyze_command("ls -la"), ([], False, False, False))
 
+    def test_git_dash_c_commit_targets_are_safe_for_direct_commits(self):
+        analysis = d.analyze_command("git -C /work/tree commit -m x")
+        self.assertEqual(analysis.commits, [["-m", "x"]])
+        self.assertFalse(analysis.has_mutator)
+        self.assertFalse(analysis.unsafe)
+        self.assertTrue(analysis.has_commit)
+        self.assertEqual(analysis.target_cwd, "/work/tree")
+
+        analysis = d.analyze_command("rtk git -C ../ticket-worktree commit -m x")
+        self.assertEqual(analysis.commits, [["-m", "x"]])
+        self.assertFalse(analysis.unsafe)
+        self.assertEqual(analysis.target_cwd, "../ticket-worktree")
+
+    def test_git_dash_c_with_other_repo_redirects_remains_unsafe(self):
+        for cmd in (
+            "git -C /work/tree --work-tree=/elsewhere commit -m x",
+            "git -C /work/tree --git-dir=/elsewhere/.git commit -m x",
+            "git -C /work -C tree commit -m x",
+        ):
+            analysis = d.analyze_command(cmd)
+            self.assertEqual(analysis.commits, [["-m", "x"]], cmd)
+            self.assertTrue(analysis.unsafe, cmd)
+            self.assertTrue(analysis.has_commit, cmd)
+            self.assertIsNone(analysis.target_cwd, cmd)
+
     def test_repo_or_cwd_changing_forms_are_unsafe(self):
         for cmd in ("cd /other && git commit -m x",
-                    "git -C /other commit -m x",
                     "git --git-dir=/x/.git commit -m x",
                     "git --work-tree=/x commit -m x",
                     "GIT_INDEX_FILE=/tmp/i git commit -m x",
@@ -114,7 +138,6 @@ class TestUnsafe(unittest.TestCase):
                     "env -C /other git commit -m x",
                     "env --chdir /other git commit -m x",
                     "env --chdir=/other git commit -m x",
-                    "rtk git -C /other commit -m x",
                     "rtk env GIT_INDEX_FILE=/tmp/i git commit -m x",
                     'env -S "git commit -m x"',
                     "time git commit -m x",

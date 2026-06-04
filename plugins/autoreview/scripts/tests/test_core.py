@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import tempfile
 import unittest
 
@@ -114,6 +115,44 @@ class TestDecideGate(unittest.TestCase):
         self.assertEqual(decide(fake, "rtk git commit -m x").action, "ALLOW")  # marker honored + consumed
         self.assertEqual(decide(fake, "rtk git commit -m x").action, "BLOCK")  # consumed -> blocked again
 
+    def test_git_dash_c_routes_gate_to_target_worktree(self):
+        fake = FakeGit(numstat=NONTRIVIAL)
+        base = tempfile.mkdtemp()
+        target = tempfile.mkdtemp()
+        seen = []
+        inp = {"cwd": base, "tool_input": {"command": f"git -C {target} commit -m x"}}
+
+        def git_factory(cwd):
+            seen.append(cwd)
+            return fake
+
+        dec = core.decide_gate(inp, git_factory=git_factory)
+        self.assertEqual(dec.action, "BLOCK")
+        self.assertEqual(seen, [target])
+
+    def test_relative_git_dash_c_routes_gate_relative_to_hook_cwd(self):
+        fake = FakeGit(numstat=NONTRIVIAL)
+        base = tempfile.mkdtemp()
+        seen = []
+        inp = {"cwd": base, "tool_input": {"command": "git -C ../ticket-worktree commit -m x"}}
+
+        def git_factory(cwd):
+            seen.append(cwd)
+            return fake
+
+        core.decide_gate(inp, git_factory=git_factory)
+        self.assertEqual(seen, [os.path.abspath(os.path.join(base, "../ticket-worktree"))])
+
+    def test_git_dash_c_marker_roundtrip_single_use(self):
+        fake = FakeGit(numstat=NONTRIVIAL, identity="e" * 40)
+        target = tempfile.mkdtemp()
+        command = f"git -C {target} commit -m x"
+        self.assertEqual(decide(fake, command).action, "BLOCK")
+        mdir = markers.marker_dir(fake)
+        markers.write(markers.marker_path(mdir, fake._identity), APPROVED_MARKER)
+        self.assertEqual(decide(fake, command).action, "ALLOW")
+        self.assertEqual(decide(fake, command).action, "BLOCK")
+
     def test_marker_does_not_authorize_unsupported_modes(self):
         # A valid marker for the staged tree must NOT let an unsupported mode through (those commit
         # content that differs from the reviewed tree). Unsupported is decided before marker lookup.
@@ -151,12 +190,10 @@ class TestDecideGate(unittest.TestCase):
     def test_repo_or_cwd_changing_forms_block(self):
         # even a TRIVIAL current staged tree must block these (they change what gets committed)
         for cmd in ("cd /other && git commit -m x",
-                    "git -C /other commit -m x",
                     "GIT_INDEX_FILE=/tmp/i git commit -m x",
                     "env -C /other git commit -m x",
                     "env --chdir /other git commit -m x",
                     "env --chdir=/other git commit -m x",
-                    "rtk git -C /other commit -m x",
                     "rtk env GIT_INDEX_FILE=/tmp/i git commit -m x",
                     'env -S "git commit -m x"',
                     "time git commit -m x"):

@@ -110,7 +110,7 @@ _SHELLS = {"sh", "bash", "zsh"}
 _EVALS = {"eval"}
 _UNKNOWN_WRAPPERS = {"sudo", "time", "xargs", "python", "python3", "ruby", "perl", "node"}
 _CD_COMMANDS = {"cd", "pushd", "popd", "chdir"}         # change the working directory
-_REPO_REDIRECT_GLOBALS = {"-C", "--git-dir", "--work-tree"}  # git globals that change repo/cwd/worktree
+_REPO_REDIRECT_GLOBALS = {"--git-dir", "--work-tree"}  # git globals that change repo/worktree
 _ENV_SPLIT_OPTS = ("-S", "--split-string")
 
 
@@ -154,12 +154,33 @@ def _git_subcommand_index(tokens: List[str], start: int = 1) -> int:
 
 
 def _git_global_options_redirect_repo(tokens: List[str], start: int = 1) -> bool:
+    _, unsafe, _ = _git_global_options(tokens, start)
+    return unsafe
+
+
+def _git_global_options(tokens: List[str], start: int = 1) -> Tuple[int, bool, Optional[str]]:
+    """Return (subcommand_index, unsafe_repo_redirect, direct_target_cwd).
+
+    A single direct `git -C <path> commit` is modelable: Git changes cwd before running the
+    subcommand, and the gate can run its own git checks from that same path. Other repo/worktree
+    redirects remain unsafe because they can decouple the index, worktree, and git dir.
+    """
     i = start
+    unsafe = False
+    target_cwd: Optional[str] = None
     while i < len(tokens) and tokens[i].startswith("-"):
-        if tokens[i].split("=", 1)[0] in _REPO_REDIRECT_GLOBALS:
-            return True
-        i += _git_global_option_width(tokens[i])
-    return False
+        t = tokens[i]
+        name = t.split("=", 1)[0]
+        if t == "-C":
+            if target_cwd is not None:
+                unsafe = True
+            target_cwd = tokens[i + 1] if i + 1 < len(tokens) else ""
+            i += 2
+            continue
+        if name in _REPO_REDIRECT_GLOBALS:
+            unsafe = True
+        i += _git_global_option_width(t)
+    return i, unsafe, target_cwd
 
 
 def _env_changes_cwd(tokens: List[str]) -> bool:
@@ -218,7 +239,8 @@ def analyze_command(command: str) -> CommandAnalysis:
     - commits: arg-token-lists for each cleanly-parsed DIRECT `git commit` (first token `git`).
     - has_mutator: a git index-mutating command co-occurs (add/rm/mv/reset/...).
     - unsafe: the command changes cwd/repo/index or wraps the commit unmodelably (cd/pushd,
-      `git -C`/`--git-dir`/`--work-tree`, GIT_* env, `env -S`, time/sudo/unknown wrappers).
+      `--git-dir`/`--work-tree`, GIT_* env, `env -S`, time/sudo/unknown wrappers). A single
+      direct `git -C <path> commit` is safe and records target_cwd.
     - has_commit: a git commit is present anywhere (direct OR behind a wrapper / env -S).
 
     The allow-shape is intentionally narrow: exactly one cleanly-parsed plain commit with `unsafe`
@@ -228,6 +250,7 @@ def analyze_command(command: str) -> CommandAnalysis:
     has_mutator = False
     unsafe = False
     has_commit = False
+    target_cwd: Optional[str] = None
     saw_function_def = False
     for seg in split_segments(command):
         tokens = tokenize_segment(seg)
@@ -294,17 +317,19 @@ def analyze_command(command: str) -> CommandAnalysis:
                 has_commit = True
             continue
         # direct git invocation: walk global options
-        if _git_global_options_redirect_repo(tokens):
+        i, repo_redirect, git_cwd = _git_global_options(tokens)
+        if repo_redirect:
             unsafe = True
-        i = _git_subcommand_index(tokens)
         if i < len(tokens):
             sub = tokens[i]
             if sub == "commit":
                 commits.append(tokens[i + 1:])
                 has_commit = True
+                if git_cwd is not None and not repo_redirect:
+                    target_cwd = git_cwd
             elif sub in GIT_INDEX_MUTATORS or sub not in GIT_READ_ONLY_COMMANDS:
                 has_mutator = True
-    return CommandAnalysis(commits, has_mutator, unsafe, has_commit)
+    return CommandAnalysis(commits, has_mutator, unsafe, has_commit, target_cwd)
 
 
 def scan_commits(command: str):

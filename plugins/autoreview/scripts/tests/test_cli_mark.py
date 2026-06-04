@@ -7,6 +7,12 @@ import unittest
 
 
 GATE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "gate.py")
+APPROVED_MARKER = {
+    "outcome": "APPROVED",
+    "counts": {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0},
+    "feedback": [],
+    "reviewers": [{"reviewer": "correctness", "outcome": "APPROVED"}],
+}
 
 
 def run(d, *args):
@@ -41,6 +47,24 @@ class TestMarkCli(unittest.TestCase):
             self.assertEqual(p.returncode, 0)
             self.assertRegex(p.stderr, r"(?i)mark failed|invalid")
             self.assertEqual(marker_names(d), [])
+
+    def test_mark_can_target_git_dash_c_worktree(self):
+        caller = new_repo()
+        target = new_repo()
+        with open(os.path.join(target, "src.py"), "w") as fh:
+            fh.write("x\n" * 40)
+        run(target, "add", "src.py")
+
+        p = subprocess.run(
+            ["python3", GATE, "mark", "--cwd", target, "--payload", json.dumps(APPROVED_MARKER)],
+            cwd=caller,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertEqual(marker_names(caller), [])
+        self.assertEqual(len(marker_names(target)), 1)
 
 
 if __name__ == "__main__":
