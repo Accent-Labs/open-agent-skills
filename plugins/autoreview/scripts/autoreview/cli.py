@@ -16,8 +16,8 @@ def _warn(msg: str) -> None:
     sys.stderr.write(f"[autoreview] {msg}\n")
 
 
-def _do_mark(payload_json: str) -> None:
-    git = Git(os.getcwd())
+def _do_mark(payload_json: str, cwd: str) -> None:
+    git = Git(os.path.abspath(cwd))
     identity = git.compute_identity(git.detect_state())
     mdir = markers.marker_dir(git)
     payload = json.loads(payload_json or "{}")
@@ -32,9 +32,10 @@ def main(argv=None) -> None:
     if argv and argv[0] == "mark":
         parser = argparse.ArgumentParser(prog="gate.py mark")
         parser.add_argument("--payload", default="{}")
+        parser.add_argument("--cwd", default=os.getcwd())
         args = parser.parse_args(argv[1:])
         try:
-            _do_mark(args.payload)
+            _do_mark(args.payload, args.cwd)
         except Exception as e:  # mark failures must not crash the agent's flow
             _warn(f"mark failed ({e})")
         return

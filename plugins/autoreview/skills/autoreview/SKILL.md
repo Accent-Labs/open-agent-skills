@@ -18,7 +18,23 @@ Resolve `${ROOT}` before running plugin scripts. Prefer the absolute plugin path
 - The gate blocked a commit and its directive told you to invoke this skill.
 - The user explicitly asks for a staged/pre-commit autoreview.
 
-If the gate says the commit mode is unsupported, do not review yet. Stage changes explicitly with `git add ...`, then run a plain `git commit`, or `rtk git commit` in environments that require `rtk` command prefixes. Unsupported forms include `-a`, `-am`, `--amend`, `--patch`, `--interactive`, pathspec commits, repo/cwd/index redirects, nested shell execution, and compound commands that change what gets committed.
+If the gate says the commit mode is unsupported, do not review yet. Stage changes explicitly with `git add ...`, then run a plain `git commit`, a direct `git -C <worktree> commit`, or the same command prefixed with `rtk` in environments that require `rtk` command prefixes. Unsupported forms include `-a`, `-am`, `--amend`, `--patch`, `--interactive`, pathspec commits, shell `cd`/`env -C` directory changes, repo/index redirects, nested shell execution, and compound commands that change what gets committed.
+
+## Worktree Targeting
+
+If you are committing from a subagent or another isolated worktree and the shell tool cannot set its working directory to that worktree, use a `WORKTREE` variable and run all staged-tree commands through `git -C "$WORKTREE"`. This keeps the reviewed staged tree, marker, and retried commit aligned.
+
+Use this pattern:
+
+```sh
+git -C "$WORKTREE" diff --cached
+git -C "$WORKTREE" diff --cached --name-only
+git -C "$WORKTREE" show :path
+python3 "${ROOT}/scripts/gate.py" mark --cwd "$WORKTREE" --payload '<JSON>'
+git -C "$WORKTREE" commit -m "subject"
+```
+
+Do not use `cd "$WORKTREE" && git commit`, nested shell strings, aliases, or helper functions for the commit retry. The gate supports direct `git -C <worktree> commit` only.
 
 ## Inputs
 
@@ -31,7 +47,7 @@ If the gate says the commit mode is unsupported, do not review yet. Stage change
 ## Procedure
 
 1. **Gather staged material.**
-   Run `git diff --cached` and collect changed paths. If nothing is staged, tell the user and stop.
+   Run `git diff --cached` and collect changed paths. If reviewing an explicit worktree target, use `git -C "$WORKTREE" diff --cached` for this and every later staged git command. If nothing is staged, tell the user and stop.
 
 2. **Gather staged context by value.**
    For each relevant changed source file, collect focused excerpts from the staged index. Prefer:
@@ -118,7 +134,7 @@ If the gate says the commit mode is unsupported, do not review yet. Stage change
    The marker writer rejects `CHANGES_REQUESTED`, `NEEDS_CONTEXT`, old verdict names, malformed JSON, mismatched counts, and blocking feedback.
 
 8. **Retry the commit.**
-   Run one plain `git commit` for the staged tree. Do not retry unsupported command forms. The marker is keyed to the staged tree and is consumed once.
+   Run one plain `git commit` for the staged tree, or `git -C "$WORKTREE" commit` when reviewing an explicit worktree target. Do not retry unsupported command forms. The marker is keyed to the staged tree and is consumed once.
    If this autoreview cycle included fixes for reviewer feedback, include a commit message body that lists the concrete feedback and fixes made. Keep the original commit subject if one was already intended, and add a short body such as:
 
    ```text
@@ -165,3 +181,4 @@ Keep the user-facing summary concise. Include full feedback only when there are 
 | Silently truncating context | Hidden blind spot in review evidence | Insert explicit truncation markers and use `NEEDS_CONTEXT` if necessary |
 | Writing a marker for blocking feedback | The next commit can ship unresolved defects | Write markers only for `APPROVED` or non-blocking `COMMENTED` |
 | Retrying an unsupported commit mode | The marker does not authorize that command shape | Stage explicitly and run one plain `git commit` |
+| Reviewing one worktree and marking another | The commit remains blocked or authorizes the wrong staged tree | Use `git -C "$WORKTREE"` for staged context and `mark --cwd "$WORKTREE"` before retrying |

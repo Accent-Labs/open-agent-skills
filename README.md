@@ -33,6 +33,8 @@ See `ARCHITECTURE.md` for the plugin and skill format conventions.
 
 A deterministic pre-commit review gate. A git-commit hook runs a fast, zero-LLM check over the staged change and, for non-trivial / sensitive / hand-resolved-merge changes, blocks the commit and asks the agent to run a multi-perspective review (correctness, security, conventions) before re-committing. Truly trivial changes (docs, small diffs) pass silently; sensitive changes such as dependency manifests, CI, Dockerfiles, migrations, and auth/security paths always get reviewed even when small. After the host installs and trusts/enables the hook, there is no runtime setup beyond `python3`; the gate fails open if it is missing.
 
+The gate supports both ordinary `git commit` in the hook working directory and direct `git -C <worktree> commit` for autonomous agents working from isolated worktrees. Shell `cd` wrappers, nested shell strings, repo/index overrides, and compound staging-plus-commit commands remain unsupported.
+
 | Component | Description |
 |---|---|
 | `autoreview` skill | Launches provider-neutral reviewer profiles over staged diff/context, aggregates strict JSON outcomes, and drives a fix-or-dispute loop before re-committing |

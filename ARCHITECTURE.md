@@ -144,12 +144,14 @@ description: <trigger text> # Multi-sentence description of when a coding tool s
 
 A deterministic pre-commit review gate. A `PreToolUse` hook on `git commit` runs a zero-LLM Python
 gate (`scripts/gate.py`, behind the fail-open `scripts/gate.sh` wrapper) over the staged change.
-Trivial changes pass silently; non-trivial, sensitive, or hand-resolved-merge changes are blocked
-(exit 2) with a directive to run the `autoreview` skill. The skill launches provider-neutral
-reviewer profiles from `agents/*.md`, requires strict JSON outcomes, and lets the agent address
-blocking feedback before re-committing. A content-keyed pass-marker in the repo's git dir, never
-committed, records only approved or non-blocking reviewed outcomes. The gate requires `python3` and
-fails open if it is absent.
+The gate supports either the hook working directory or a direct `git -C <worktree> commit` target so
+autonomous subagents can commit from isolated worktrees without changing shell cwd. Trivial changes
+pass silently; non-trivial, sensitive, or hand-resolved-merge changes are blocked (exit 2) with a
+directive to run the `autoreview` skill. The skill launches provider-neutral reviewer profiles from
+`agents/*.md`, requires strict JSON outcomes, and lets the agent address blocking feedback before
+re-committing. A content-keyed pass-marker in the repo's git dir, never committed, records only
+approved or non-blocking reviewed outcomes. For explicit worktree targets, the marker is written
+with `gate.py mark --cwd <worktree>`. The gate requires `python3` and fails open if it is absent.
 
 | Component | Purpose |
 |---|---|
