@@ -14,16 +14,18 @@ PLUGIN_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__
 
 UNSUPPORTED_DIRECTIVE = (
     "Autoreview supports plain staged commits only. Stage your changes explicitly (`git add ...`) "
-    "and run a plain `git commit`; do not use -a/-am/--amend/--patch/--interactive/<pathspec>. "
+    "and run a plain `git commit` (or `rtk git commit` in rtk-prefixed environments); do not use "
+    "-a/-am/--amend/--patch/--interactive/<pathspec>. "
     "(No autoreview marker is written for this command form.)"
 )
 
 COMPOUND_DIRECTIVE = (
     "Autoreview can only verify a single plain `git commit` of the staged tree in the current "
-    "directory. Run nothing in the same command that changes what gets committed — no staging "
+    "directory, including `rtk git commit` when commands must be rtk-prefixed. Run nothing in the "
+    "same command that changes what gets committed — no staging "
     "(`git add` ...), no chained/multiple commits, no `cd`/`git -C`/`--git-dir`/`--work-tree`, no "
-    "GIT_* env overrides, and no `env -S`/`time`/other wrappers. Stage in this repo, then run a plain "
-    "`git commit` on its own."
+    "GIT_* env overrides, and no `env -S`/`time`/unknown wrappers. Stage in this repo, then run a "
+    "plain commit command on its own."
 )
 
 

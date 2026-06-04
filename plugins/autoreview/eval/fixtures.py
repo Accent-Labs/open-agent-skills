@@ -65,6 +65,8 @@ def cherry(d, g):
 FIXTURES = [
     ("trivial->allow", "git commit -m x", trivial, "ALLOW"),
     ("nontrivial->review", "git commit -m x", nontrivial, "REVIEW"),
+    ("rtk-trivial->allow", "rtk git commit -m x", trivial, "ALLOW"),
+    ("rtk-nontrivial->review", "rtk git commit -m x", nontrivial, "REVIEW"),
     ("lockfile->review", "git commit -m x", lockfile, "REVIEW"),
     ("docs->allow", "git commit -m x", docs, "ALLOW"),
     ("committree->allow", "git commit-tree abc", big, "ALLOW"),

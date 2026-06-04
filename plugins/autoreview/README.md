@@ -16,7 +16,7 @@
 
 ## Gate Contract
 
-The hook allows only one plain staged `git commit` in the hook working directory. It blocks unsupported forms before looking for a marker:
+The hook allows only one plain staged `git commit` in the hook working directory. Environments that prefix shell commands with `rtk` may use `rtk git commit ...`; the gate treats `rtk` as a transparent command proxy and still applies the same commit-shape checks to the wrapped command. It blocks unsupported forms before looking for a marker:
 
 - `-a`, `-am`, `--amend`, `--patch`, `--interactive`, pathspec commits
 - multiple commits or compound commands that stage or mutate the index

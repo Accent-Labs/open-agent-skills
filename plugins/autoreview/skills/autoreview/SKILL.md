@@ -18,7 +18,7 @@ Resolve `${ROOT}` before running plugin scripts. Prefer the absolute plugin path
 - The gate blocked a commit and its directive told you to invoke this skill.
 - The user explicitly asks for a staged/pre-commit autoreview.
 
-If the gate says the commit mode is unsupported, do not review yet. Stage changes explicitly with `git add ...`, then run a plain `git commit`. Unsupported forms include `-a`, `-am`, `--amend`, `--patch`, `--interactive`, pathspec commits, repo/cwd/index redirects, nested shell execution, and compound commands that change what gets committed.
+If the gate says the commit mode is unsupported, do not review yet. Stage changes explicitly with `git add ...`, then run a plain `git commit`, or `rtk git commit` in environments that require `rtk` command prefixes. Unsupported forms include `-a`, `-am`, `--amend`, `--patch`, `--interactive`, pathspec commits, repo/cwd/index redirects, nested shell execution, and compound commands that change what gets committed.
 
 ## Inputs
 
