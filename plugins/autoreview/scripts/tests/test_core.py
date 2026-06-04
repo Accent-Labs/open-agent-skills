@@ -87,6 +87,12 @@ class TestDecideGate(unittest.TestCase):
         self.assertEqual(decide(FakeGit(numstat=TRIVIAL)).action, "ALLOW")
         self.assertEqual(decide(FakeGit(numstat=NONTRIVIAL)).action, "BLOCK")
 
+    def test_rtk_wrapped_plain_commit_uses_same_gate_path(self):
+        self.assertEqual(decide(FakeGit(numstat=TRIVIAL), "rtk git commit -m x").action, "ALLOW")
+        dec = decide(FakeGit(numstat=NONTRIVIAL), "rtk git commit -m x")
+        self.assertEqual(dec.action, "BLOCK")
+        self.assertIn("bundled reviewer profiles", dec.message)
+
     def test_review_directive_includes_plugin_root(self):
         dec = decide(FakeGit(numstat=NONTRIVIAL))
         self.assertIn("autoreview plugin dir:", dec.message)
@@ -99,6 +105,14 @@ class TestDecideGate(unittest.TestCase):
         markers.write(markers.marker_path(mdir, fake._identity), APPROVED_MARKER)
         self.assertEqual(decide(fake).action, "ALLOW")  # marker honored + consumed
         self.assertEqual(decide(fake).action, "BLOCK")  # consumed -> blocked again
+
+    def test_rtk_marker_roundtrip_single_use(self):
+        fake = FakeGit(numstat=NONTRIVIAL, identity="d" * 40)
+        self.assertEqual(decide(fake, "rtk git commit -m x").action, "BLOCK")  # no marker yet
+        mdir = markers.marker_dir(fake)
+        markers.write(markers.marker_path(mdir, fake._identity), APPROVED_MARKER)
+        self.assertEqual(decide(fake, "rtk git commit -m x").action, "ALLOW")  # marker honored + consumed
+        self.assertEqual(decide(fake, "rtk git commit -m x").action, "BLOCK")  # consumed -> blocked again
 
     def test_marker_does_not_authorize_unsupported_modes(self):
         # A valid marker for the staged tree must NOT let an unsupported mode through (those commit
@@ -142,6 +156,8 @@ class TestDecideGate(unittest.TestCase):
                     "env -C /other git commit -m x",
                     "env --chdir /other git commit -m x",
                     "env --chdir=/other git commit -m x",
+                    "rtk git -C /other commit -m x",
+                    "rtk env GIT_INDEX_FILE=/tmp/i git commit -m x",
                     'env -S "git commit -m x"',
                     "time git commit -m x"):
             self.assertEqual(decide(FakeGit(numstat=TRIVIAL), cmd).action, "BLOCK", cmd)

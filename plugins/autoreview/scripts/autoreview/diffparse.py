@@ -105,7 +105,7 @@ GIT_READ_ONLY_COMMANDS = {
     "diff-tree", "for-each-ref", "grep", "log", "ls-files", "ls-tree", "merge-base",
     "name-rev", "rev-list", "rev-parse", "show", "show-ref", "status",
 }
-_WRAPPERS = {"command", "builtin", "exec", "nohup"}     # transparent single-token wrappers we can model
+_WRAPPERS = {"command", "builtin", "exec", "nohup", "rtk"}  # transparent single-token wrappers we can model
 _SHELLS = {"sh", "bash", "zsh"}
 _EVALS = {"eval"}
 _UNKNOWN_WRAPPERS = {"sudo", "time", "xargs", "python", "python3", "ruby", "perl", "node"}

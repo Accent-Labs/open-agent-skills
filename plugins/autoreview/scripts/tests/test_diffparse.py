@@ -24,6 +24,7 @@ class TestFindCommit(unittest.TestCase):
         self.assertEqual(d.find_git_commit('git commit -m "msg"'), ['-m', 'msg'])
         self.assertEqual(d.find_git_commit('git -C /r -c a=b commit -m y'), ['-m', 'y'])
         self.assertEqual(d.find_git_commit('/usr/bin/git commit -m y'), ['-m', 'y'])
+        self.assertEqual(d.find_git_commit('rtk git commit -m y'), ['-m', 'y'])
         self.assertEqual(d.find_git_commit('VAR=1 git commit --amend'), ['--amend'])
         self.assertEqual(d.find_git_commit('echo hi && git commit'), [])
         self.assertIsNone(d.find_git_commit('git commit-tree abc'))
@@ -68,6 +69,7 @@ class TestScan(unittest.TestCase):
         commits, mut = d.scan_commits('env FOO=bar git commit -m y')  # env-wrapped
         self.assertEqual(commits, [['-m', 'y']])
         self.assertEqual(d.scan_commits('command git commit')[0], [[]])  # wrapper-stripped
+        self.assertEqual(d.scan_commits('rtk git commit -m y')[0], [['-m', 'y']])
         self.assertEqual(d.scan_commits('echo hi && ls')[0], [])  # no git commit
 
 
@@ -97,6 +99,8 @@ class TestUnsafe(unittest.TestCase):
         self.assertEqual(d.analyze_command("/usr/bin/git commit -m x"), ([["-m", "x"]], False, False, True))
         self.assertEqual(d.analyze_command("echo done && git commit -m x"), ([["-m", "x"]], False, False, True))
         self.assertEqual(d.analyze_command("env FOO=bar git commit -m x"), ([["-m", "x"]], False, False, True))
+        self.assertEqual(d.analyze_command("rtk git commit -m x"), ([["-m", "x"]], False, False, True))
+        self.assertEqual(d.analyze_command("rtk /usr/bin/git commit -m x"), ([["-m", "x"]], False, False, True))
         self.assertEqual(d.analyze_command("ls -la"), ([], False, False, False))
 
     def test_repo_or_cwd_changing_forms_are_unsafe(self):
@@ -110,6 +114,8 @@ class TestUnsafe(unittest.TestCase):
                     "env -C /other git commit -m x",
                     "env --chdir /other git commit -m x",
                     "env --chdir=/other git commit -m x",
+                    "rtk git -C /other commit -m x",
+                    "rtk env GIT_INDEX_FILE=/tmp/i git commit -m x",
                     'env -S "git commit -m x"',
                     "time git commit -m x",
                     "sudo git commit -m x",
