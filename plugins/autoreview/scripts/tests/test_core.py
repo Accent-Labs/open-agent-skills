@@ -92,12 +92,12 @@ class TestDecideGate(unittest.TestCase):
         self.assertEqual(decide(FakeGit(numstat=TRIVIAL), "rtk git commit -m x").action, "ALLOW")
         dec = decide(FakeGit(numstat=NONTRIVIAL), "rtk git commit -m x")
         self.assertEqual(dec.action, "BLOCK")
-        self.assertIn("bundled reviewer profiles", dec.message)
+        self.assertIn("bundled and project-local reviewer profiles", dec.message)
 
     def test_review_directive_includes_plugin_root(self):
         dec = decide(FakeGit(numstat=NONTRIVIAL))
         self.assertIn("autoreview plugin dir:", dec.message)
-        self.assertIn("bundled reviewer profiles", dec.message)
+        self.assertIn(".agents/autoreview/reviewers", dec.message)
 
     def test_marker_roundtrip_single_use(self):
         fake = FakeGit(numstat=NONTRIVIAL, identity="b" * 40)

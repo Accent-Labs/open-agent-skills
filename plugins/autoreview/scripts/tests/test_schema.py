@@ -60,6 +60,29 @@ class TestReviewerSchema(unittest.TestCase):
         self.assertEqual(coerced["feedback"], [])
         self.assertEqual(coerced["review_error"]["kind"], "invalid_json")
 
+    def test_reviewer_id_mismatch_coerces_to_needs_context(self):
+        coerced = schema.coerce_reviewer_result(
+            "security",
+            '{"reviewer":"correctness","outcome":"APPROVED","summary":"No issues.","feedback":[]}',
+        )
+        self.assertEqual(coerced["reviewer"], "security")
+        self.assertEqual(coerced["outcome"], "NEEDS_CONTEXT")
+        self.assertEqual(coerced["feedback"], [])
+        self.assertEqual(coerced["review_error"]["kind"], "invalid_schema")
+        self.assertIn("reviewer mismatch", coerced["review_error"]["message"])
+
+    def test_prompt_load_error_result_aggregates_with_zero_counts(self):
+        error_result = schema.needs_context_result(
+            "domain",
+            "Custom reviewer prompt could not be loaded.",
+            "invalid_prompt",
+        )
+        aggregated = schema.aggregate_results([error_result])
+        self.assertEqual(aggregated["outcome"], "NEEDS_CONTEXT")
+        self.assertEqual(aggregated["counts"], schema._empty_counts())
+        self.assertEqual(aggregated["feedback"], [])
+        self.assertEqual(aggregated["reviewers"][0]["status"], "invalid_prompt")
+
     def test_feedback_line_must_be_positive_when_present(self):
         schema.validate_feedback_item(item())
         file_level = item()

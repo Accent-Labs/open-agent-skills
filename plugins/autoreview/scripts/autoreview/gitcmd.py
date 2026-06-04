@@ -46,6 +46,10 @@ class Git:
         p = self.run(["rev-parse", "--git-path", name]).strip()
         return p if os.path.isabs(p) else os.path.join(self.cwd, p)
 
+    def worktree_root(self) -> str:
+        root = self.run(["rev-parse", "--show-toplevel"]).strip()
+        return root if os.path.isabs(root) else os.path.abspath(os.path.join(self.cwd, root))
+
     def detect_state(self) -> str:
         def has(name: str) -> bool:
             # Only an expected git failure (e.g. not yet a repo) is tolerated here; any other

@@ -37,10 +37,12 @@ The gate supports both ordinary `git commit` in the hook working directory and d
 
 | Component | Description |
 |---|---|
-| `autoreview` skill | Launches provider-neutral reviewer profiles over staged diff/context, aggregates strict JSON outcomes, and drives a fix-or-dispute loop before re-committing |
+| `autoreview` skill | Launches bundled and project-local reviewer profiles over staged diff/context, aggregates strict JSON outcomes, and drives a fix-or-dispute loop before re-committing |
 | pre-commit hook | A `PreToolUse` hook on `git commit` that runs the deterministic gate (Python, fail-open) and blocks risky commits with a directive to review |
 
 See `plugins/autoreview/README.md` for the plugin contract, schema, validation matrix, and hook trust notes.
+
+Consumer repositories may add custom autoreview reviewers as markdown files under `.agents/autoreview/reviewers/`. These reviewers are additive in v1; they do not override or disable the bundled correctness, security, and conventions reviewers.
 
 ## Installing
 

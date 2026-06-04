@@ -8,7 +8,8 @@ import sys
 from . import diffparse, markers
 from .core import decide_gate
 from .gitcmd import Git
-from .models import BLOCK
+from .models import BLOCK, ProfileLoadError
+from .prompts import reviewers_payload
 from .schema import validate_marker_payload
 
 
@@ -26,6 +27,12 @@ def _do_mark(payload_json: str, cwd: str) -> None:
     sys.stdout.write(f"marker written for {identity}\n")
 
 
+def _do_reviewers(cwd: str) -> None:
+    git = Git(os.path.abspath(cwd))
+    payload = reviewers_payload(git.worktree_root())
+    sys.stdout.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+
+
 def main(argv=None) -> None:
     argv = sys.argv[1:] if argv is None else argv
     # Route subcommands without building argparse on the stdin-gate hot path.
@@ -38,6 +45,28 @@ def main(argv=None) -> None:
             _do_mark(args.payload, args.cwd)
         except Exception as e:  # mark failures must not crash the agent's flow
             _warn(f"mark failed ({e})")
+        return
+    if argv and argv[0] == "reviewers":
+        parser = argparse.ArgumentParser(prog="gate.py reviewers")
+        parser.add_argument("--cwd", default=os.getcwd())
+        args = parser.parse_args(argv[1:])
+        try:
+            _do_reviewers(args.cwd)
+        except Exception as e:  # reviewer discovery is advisory and should report cleanly
+            _warn(f"reviewer discovery failed ({e})")
+            error = ProfileLoadError(
+                "reviewer-discovery",
+                "project_local",
+                os.path.abspath(args.cwd),
+                "reviewer_discovery_failed",
+                str(e),
+            )
+            sys.stdout.write(json.dumps({
+                "repo_root": os.path.abspath(args.cwd),
+                "local_reviewers_dir": "",
+                "reviewers": [],
+                "errors": [error.to_dict()],
+            }, indent=2, sort_keys=True) + "\n")
         return
 
     raw = sys.stdin.read()

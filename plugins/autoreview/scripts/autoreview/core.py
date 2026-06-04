@@ -45,7 +45,9 @@ def review_directive(reason: str, files: Optional[List[FileDelta]]) -> str:
     else:
         stats = ""
     return (f"Autoreview required ({reason}). Invoke the `autoreview` skill now: review the staged "
-            f"change with the bundled reviewer profiles, address or dispute findings, then re-commit. "
+            f"change with the bundled and project-local reviewer profiles, address or dispute "
+            f"findings, then re-commit. Project-local reviewers live under "
+            f".agents/autoreview/reviewers/. "
             f"{stats}(autoreview plugin dir: {PLUGIN_ROOT} — use this as ROOT for scripts/ if "
             f"$CLAUDE_PLUGIN_ROOT/$PLUGIN_ROOT are unset.)").strip()
 
