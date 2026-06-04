@@ -3,6 +3,8 @@ import os
 import re
 import unittest
 
+from autoreview import prompts
+
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 AGENTS = os.path.join(ROOT, "agents")
@@ -41,11 +43,12 @@ class TestProfiles(unittest.TestCase):
             self.assertEqual(frontmatter.get("name"), stem)
             self.assertNotIn("model", frontmatter)
             self.assertNotIn("tools", frontmatter)
-            self.assertRegex(body, r"\bAPPROVED\b")
-            self.assertRegex(body, r"\bCHANGES_REQUESTED\b")
-            self.assertRegex(body, r"\bCOMMENTED\b")
-            self.assertRegex(body, r"\bNEEDS_CONTEXT\b")
-            self.assertRegex(body, r"\bJSON\b")
+            self.assertIn("Quality bar:", body)
+            self.assertNotRegex(body, r"\bAPPROVED\b")
+            self.assertNotRegex(body, r"\bCHANGES_REQUESTED\b")
+            self.assertNotRegex(body, r"\bCOMMENTED\b")
+            self.assertNotRegex(body, r"\bNEEDS_CONTEXT\b")
+            self.assertNotRegex(body, r"\bJSON\b")
             self.assertNotRegex(body, r"\bClaude\b|\bCodex\b|\bGemini\b|native subagent|Read tool")
 
     def test_skill_is_provider_neutral(self):
@@ -60,9 +63,10 @@ class TestProfiles(unittest.TestCase):
         self.assertRegex(body, r"(?is)commit message.*feedback.*fixes")
         self.assertRegex(body, r"(?is)feedback.*fixes.*commit message")
 
-    def test_json_examples_do_not_use_placeholder_enums(self):
+    def test_assembled_prompts_include_response_contract_without_placeholder_enums(self):
         for filename in sorted(n for n in os.listdir(AGENTS) if n.endswith(".md")):
-            body = parse_frontmatter(read(os.path.join(AGENTS, filename)))[1]
+            profile = prompts.load_bundled_profile(os.path.join(AGENTS, filename))
+            body = prompts.assemble_reviewer_prompt(profile)
             self.assertNotRegex(body, r'"outcome":\s*"[^"]*\|')
             self.assertNotRegex(body, r'"severity":\s*"[^"]*\|')
             self.assertRegex(body, r"(?is)raw JSON.*no Markdown fences|no Markdown fences.*raw JSON")

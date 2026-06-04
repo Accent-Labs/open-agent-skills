@@ -74,7 +74,7 @@ def validate_reviewer_result(data: dict) -> dict:
     return data
 
 
-def _needs_context_result(reviewer: str, reason: str, kind: str) -> dict:
+def needs_context_result(reviewer: str, reason: str, kind: str) -> dict:
     return {
         "reviewer": reviewer,
         "outcome": "NEEDS_CONTEXT",
@@ -90,11 +90,14 @@ def _needs_context_result(reviewer: str, reason: str, kind: str) -> dict:
 def coerce_reviewer_result(reviewer: str, raw: str) -> dict:
     try:
         data = json.loads(raw)
-        return validate_reviewer_result(data)
+        validated = validate_reviewer_result(data)
+        if validated["reviewer"] != reviewer:
+            raise SchemaError("reviewer mismatch: expected %s, got %s" % (reviewer, validated["reviewer"]))
+        return validated
     except json.JSONDecodeError as exc:
-        return _needs_context_result(reviewer, str(exc), "invalid_json")
+        return needs_context_result(reviewer, str(exc), "invalid_json")
     except Exception as exc:
-        return _needs_context_result(reviewer, str(exc), "invalid_schema")
+        return needs_context_result(reviewer, str(exc), "invalid_schema")
 
 
 def _empty_counts() -> Dict[str, int]:

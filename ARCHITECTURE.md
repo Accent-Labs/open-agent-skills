@@ -23,7 +23,7 @@ plugins/
       hooks.json            # (optional) primary plugin hooks
     scripts/                # (optional) executable helpers a hook/skill invokes
     agents/
-      <id>.md               # (optional) provider-neutral reviewer profiles
+      <id>.md               # (optional) provider-neutral bundled reviewer personas
     skills/
       <skill-name>/
         SKILL.md            # The skill document (frontmatter + markdown)
@@ -99,6 +99,18 @@ Claude Code resolves marketplace plugins in `strict` mode by default, which expe
 
 Every registry and manifest should list the same plugins in the same order unless a tool-specific compatibility issue requires an exception.
 
+## Consumer Repository Configuration
+
+Some plugins may read namespaced project-local configuration from a repository that installs or uses
+the plugin. For `autoreview`, custom reviewer personas live under the reviewed repository's git root:
+
+```text
+.agents/autoreview/reviewers/<reviewer-id>.md
+```
+
+The `.agents/autoreview/` namespace is separate from this library's Codex marketplace registry at
+`.agents/plugins/marketplace.json`.
+
 ## Skill Document Format
 
 Every skill lives in `plugins/<plugin>/skills/<skill-name>/SKILL.md`.
@@ -147,17 +159,20 @@ gate (`scripts/gate.py`, behind the fail-open `scripts/gate.sh` wrapper) over th
 The gate supports either the hook working directory or a direct `git -C <worktree> commit` target so
 autonomous subagents can commit from isolated worktrees without changing shell cwd. Trivial changes
 pass silently; non-trivial, sensitive, or hand-resolved-merge changes are blocked (exit 2) with a
-directive to run the `autoreview` skill. The skill launches provider-neutral reviewer profiles from
-`agents/*.md`, requires strict JSON outcomes, and lets the agent address blocking feedback before
-re-committing. A content-keyed pass-marker in the repo's git dir, never committed, records only
-approved or non-blocking reviewed outcomes. For explicit worktree targets, the marker is written
-with `gate.py mark --cwd <worktree>`. The gate requires `python3` and fails open if it is absent.
+directive to run the `autoreview` skill. The skill launches provider-neutral bundled reviewer
+personas from `agents/*.md` plus additive project-local reviewers from
+`<repo-root>/.agents/autoreview/reviewers/*.md`, requires strict JSON outcomes, and lets the agent
+address blocking feedback before re-committing. A content-keyed pass-marker in the repo's git dir,
+never committed, records only approved or non-blocking reviewed outcomes. For explicit worktree
+targets, the marker is written with `gate.py mark --cwd <worktree>`. The gate requires `python3` and
+fails open if it is absent.
 
 | Component | Purpose |
 |---|---|
 | `scripts/` | `gate.py` (gate + `mark`), `gitcmd.py`/`diffparse.py`/`classify.py`/`markers.py`/`schema.py`/`core.py`/`cli.py` package, `gate.sh` wrapper, tests |
 | `hooks.json` + `hooks/hooks.json` | `PreToolUse -> Bash` wiring kept byte-identical for host compatibility |
-| `agents/{correctness,security,conventions}.md` | Provider-neutral reviewer profiles that return strict JSON |
+| `agents/{correctness,security,conventions}.md` | Provider-neutral bundled reviewer personas |
+| `scripts/autoreview/prompts.py` | Reviewer discovery, project-local prompt validation, and shared response-contract rendering |
 | `skills/autoreview/SKILL.md` | Orchestration: gather staged context, launch reviewers, aggregate outcomes, resolve feedback, marker + re-commit |
 
 ## Adding a Plugin

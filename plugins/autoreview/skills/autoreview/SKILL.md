@@ -1,6 +1,6 @@
 ---
 name: autoreview
-description: Use this skill to review staged code changes before committing when the autoreview pre-commit gate blocks a plain `git commit`, or when the user asks for "autoreview", "review my staged changes", "review before commit", "pre-flight review", or a multi-agent pre-commit review. It launches the bundled reviewer profiles over staged diff and staged context, requires strict JSON reviewer results with `APPROVED`, `COMMENTED`, `CHANGES_REQUESTED`, or `NEEDS_CONTEXT`, fixes or resolves blocking feedback, writes an authorizing marker only for non-blocking final outcomes, and then retries a plain staged commit.
+description: Use this skill to review staged code changes before committing when the autoreview pre-commit gate blocks a plain `git commit`, or when the user asks for "autoreview", "review my staged changes", "review before commit", "pre-flight review", or a multi-agent pre-commit review. It launches bundled and project-local reviewer profiles over staged diff and staged context, requires strict JSON reviewer results with `APPROVED`, `COMMENTED`, `CHANGES_REQUESTED`, or `NEEDS_CONTEXT`, fixes or resolves blocking feedback, writes an authorizing marker only for non-blocking final outcomes, and then retries a plain staged commit.
 ---
 
 # Autoreview
@@ -42,7 +42,8 @@ Do not use `cd "$WORKTREE" && git commit`, nested shell strings, aliases, or hel
 - Changed paths from staged index commands such as `git diff --cached --name-only`.
 - Staged file context, gathered from the index with commands such as `git show :path`, not from live working-tree reads.
 - For merges, include the conflict scope from staged index data plus merge parent identifiers when available.
-- Reviewer profiles from `${ROOT}/agents/*.md`; the filename stem is the reviewer id.
+- Reviewer profiles from `${ROOT}/agents/*.md` plus project-local profiles from `<repo-root>/.agents/autoreview/reviewers/*.md`; the filename stem is the reviewer id.
+- Reviewer discovery data from `python3 "${ROOT}/scripts/gate.py" reviewers --cwd <reviewed-repo>`.
 
 ## Procedure
 
@@ -58,50 +59,33 @@ Do not use `cd "$WORKTREE" && git commit`, nested shell strings, aliases, or hel
 
    Use staged/base commands only. Do not ask reviewers to inspect live files. If context is too large, batch by file and insert explicit markers such as `[staged context truncated: 4 hunks omitted]`.
 
-3. **Launch reviewers in parallel.**
-   Start one isolated worker per reviewer profile in `${ROOT}/agents/*.md`. Use the host tool's available worker or subagent mechanism. Pass each worker:
-   - the full reviewer profile content,
+3. **Discover and launch reviewers in parallel.**
+   Run the reviewer discovery helper against the reviewed repo. If reviewing an explicit worktree target, pass that path as `--cwd`:
+
+   ```sh
+   python3 "${ROOT}/scripts/gate.py" reviewers --cwd "$WORKTREE"
+   ```
+
+   If you are not using an explicit `WORKTREE`, run:
+
+   ```sh
+   python3 "${ROOT}/scripts/gate.py" reviewers --cwd "$PWD"
+   ```
+
+   The helper returns bundled reviewers first, then additive project-local reviewers from `.agents/autoreview/reviewers/`, plus any prompt-load errors. Do not launch workers for prompt-load errors; keep their `review_result` entries for aggregation.
+
+   Start one isolated worker per reviewer profile that loaded successfully. Use the host tool's available worker or subagent mechanism. Pass each worker:
+   - the discovered `prompt` value, which includes the persona and shared response contract,
    - `<staged_diff>...</staged_diff>`,
    - `<staged_context>...</staged_context>`,
    - any explicit truncation markers.
 
 4. **Require strict reviewer JSON.**
-   Each reviewer must return raw JSON only: exactly one JSON object, no Markdown fences, no prose, and no placeholder enum strings. `summary` is required. Use `line: null` only for file-level findings or `NEEDS_CONTEXT`; real line-specific findings must use a positive integer.
-
-   ```json
-   {
-     "reviewer": "correctness",
-     "outcome": "APPROVED",
-     "summary": "No correctness defects found.",
-     "feedback": []
-   }
-   ```
-
-   ```json
-   {
-     "reviewer": "correctness",
-     "outcome": "CHANGES_REQUESTED",
-     "summary": "The staged change can dereference a missing value.",
-     "feedback": [
-       {
-         "severity": "high",
-         "path": "src/app.py",
-         "line": 42,
-         "title": "Missing value can crash request",
-         "impact": "A valid request can raise before returning an error response.",
-         "evidence": "The staged diff reads config.token before checking that config exists.",
-         "recommendation": "Restore the config presence check before reading token.",
-         "blocking": true
-       }
-     ]
-   }
-   ```
-
-   Allowed outcomes are `APPROVED`, `COMMENTED`, `CHANGES_REQUESTED`, and `NEEDS_CONTEXT`. Treat invalid JSON as `NEEDS_CONTEXT`. Treat `APPROVED` with feedback, `COMMENTED` with blocking or medium/high/critical feedback, `CHANGES_REQUESTED` without blocking feedback, missing `summary`, `NEEDS_CONTEXT` with feedback, and line `0` as invalid reviewer output.
+   Each reviewer must return the raw JSON object described in its discovered prompt. Treat invalid JSON, schema violations, reviewer-id mismatches, and prompt-load errors as `NEEDS_CONTEXT` reviewer metadata, not feedback items. `summary` is required. Use `line: null` only for file-level findings or `NEEDS_CONTEXT`; real line-specific findings must use a positive integer.
 
 5. **Aggregate mechanically.**
    - Any `CHANGES_REQUESTED` means the final outcome is `CHANGES_REQUESTED`.
-   - Else any `NEEDS_CONTEXT` means refresh staged context and rerun that reviewer once. If it still needs context, stop without committing.
+   - Else any `NEEDS_CONTEXT` means refresh staged context and rerun that reviewer once when the reviewer ran and asked for context. Prompt-load errors cannot be fixed by rerunning; stop without committing and report the invalid project-local prompt path and reason.
    - Else any `COMMENTED` means the final outcome is `COMMENTED`.
    - Else the final outcome is `APPROVED`.
    - Inject the reviewer id into each aggregated feedback item mechanically; do not rely on reviewers to repeat it.

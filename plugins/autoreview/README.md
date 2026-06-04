@@ -11,7 +11,7 @@
 | `scripts/gate.sh` | POSIX fail-open wrapper that preserves only intentional exit `2` review blocks |
 | `scripts/gate.py` | Python entrypoint for the deterministic gate and `mark` subcommand |
 | `scripts/autoreview/` | Gate logic, git access, diff parsing, classification, marker, and schema validation |
-| `agents/*.md` | Provider-neutral reviewer profiles for correctness, security, and conventions |
+| `agents/*.md` | Provider-neutral bundled reviewer personas for correctness, security, and conventions |
 | `skills/autoreview/SKILL.md` | Host-agent workflow for staged context, reviewer fanout, aggregation, marker writing, and retrying the commit |
 
 ## Gate Contract
@@ -42,6 +42,24 @@ Do not wrap the commit in `cd "$WORKTREE" && ...`, `sh -c`, or helper functions.
 ## Review Contract
 
 Reviewers consume staged diff and staged context by value. They must not read live working-tree files because unstaged edits may differ from the staged tree being committed.
+
+Bundled reviewer personas live in `agents/*.md`. A consumer repository may add project-local reviewers as markdown drop-ins:
+
+```text
+<repo-root>/.agents/autoreview/reviewers/<reviewer-id>.md
+```
+
+Project-local reviewers are additive in v1. The bundled `correctness`, `security`, and `conventions` reviewers always run first, followed by project-local reviewers sorted by reviewer id. Project-local files cannot override bundled reviewers, disable bundled reviewers, configure ordering, select per-path reviewers, or select models/tools.
+
+Each project-local reviewer must be a regular UTF-8 `.md` file below `.agents/autoreview/reviewers/`, with frontmatter `name` matching the filename stem, a non-empty `description`, a safe lowercase reviewer id, and a non-empty body. Invalid prompt files and duplicate reviewer ids are reported as `NEEDS_CONTEXT` reviewer metadata with zero feedback, so they block marker writing without inflating severity counts.
+
+Use the read-only helper to inspect the effective reviewer set for a repo or worktree:
+
+```sh
+python3 plugins/autoreview/scripts/gate.py reviewers --cwd "$PWD"
+```
+
+The helper resolves the git worktree root, returns assembled reviewer prompts with the shared JSON response contract appended, and reports prompt-load errors separately.
 
 Every reviewer returns exactly one JSON object:
 
