@@ -10,7 +10,7 @@
   "interface": {
     "displayName": "Autoreview",
     "shortDescription": "Pre-commit review gate for AI coding agents",
-    "longDescription": "A PreToolUse hook intercepts git commit and runs a deterministic, zero-LLM gate over the staged change. Trivial changes pass silently; non-trivial, sensitive, or hand-resolved-merge changes are blocked with a directive to run the autoreview skill. The skill launches provider-neutral reviewer profiles (correctness, security, conventions, plus project-local reviewers discovered from .agents/autoreview/reviewers/ and enforced at marker time), requires strict JSON outcomes, and writes a content-keyed marker only for approved or non-blocking commented results. The gate runs on python3 and fails open if the runtime is absent.",
+    "longDescription": "A PreToolUse hook intercepts git commit and runs a deterministic, zero-LLM gate over the staged change. Trivial changes pass silently; non-trivial, sensitive, or hand-resolved-merge changes are blocked with a directive to run the autoreview skill. The skill launches provider-neutral reviewer profiles (correctness, security, conventions), requires strict JSON outcomes, and writes a content-keyed marker only for approved or non-blocking commented results. The gate runs on python3 and fails open if the runtime is absent.",
     "developerName": "Accent Labs Inc.",
     "category": "Productivity",
     "capabilities": [
