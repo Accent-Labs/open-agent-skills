@@ -162,14 +162,17 @@ pass silently; non-trivial, sensitive, or hand-resolved-merge changes are blocke
 directive to run the `autoreview` skill. The skill launches provider-neutral bundled reviewer
 personas from `agents/*.md` plus additive project-local reviewers from
 `<repo-root>/.agents/autoreview/reviewers/*.md`, requires strict JSON outcomes, and lets the agent
-address blocking feedback before re-committing. A content-keyed pass-marker in the repo's git dir,
+address blocking feedback before re-committing. Project-local reviewers are enforced
+deterministically: the block directive enumerates the required reviewer set, `gate.py mark` rejects
+payloads that do not cover it (or while any project-local profile fails to load), and the gate
+re-validates coverage before honoring a marker. A content-keyed pass-marker in the repo's git dir,
 never committed, records only approved or non-blocking reviewed outcomes. For explicit worktree
-targets, the marker is written with `gate.py mark --cwd <worktree>`. The gate requires `python3` and
-fails open if it is absent.
+targets, the marker is written with `gate.py mark --cwd <worktree>`; `gate.py check` inspects marker
+status without consuming it. The gate requires `python3` and fails open if it is absent.
 
 | Component | Purpose |
 |---|---|
-| `scripts/` | `gate.py` (gate + `mark`), `gitcmd.py`/`diffparse.py`/`classify.py`/`markers.py`/`schema.py`/`core.py`/`cli.py` package, `gate.sh` wrapper, tests |
+| `scripts/` | `gate.py` (gate + `mark`/`reviewers`/`check`), `gitcmd.py`/`diffparse.py`/`classify.py`/`markers.py`/`schema.py`/`core.py`/`cli.py` package, `gate.sh` wrapper, tests |
 | `hooks.json` + `hooks/hooks.json` | `PreToolUse -> Bash` wiring kept byte-identical for host compatibility |
 | `agents/{correctness,security,conventions}.md` | Provider-neutral bundled reviewer personas |
 | `scripts/autoreview/prompts.py` | Reviewer discovery, project-local prompt validation, and shared response-contract rendering |

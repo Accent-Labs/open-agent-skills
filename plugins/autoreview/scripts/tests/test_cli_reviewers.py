@@ -7,20 +7,9 @@ import tempfile
 import unittest
 
 
+from tests.helpers import new_repo
+
 GATE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "gate.py")
-
-
-def run_git(d: str, *args: str) -> None:
-    subprocess.run(["git", *args], cwd=d, capture_output=True, text=True, check=True)
-
-
-def new_repo() -> str:
-    d = tempfile.mkdtemp(prefix="ar-reviewers-")
-    run_git(d, "init", "-q", "-b", "main")
-    run_git(d, "config", "user.email", "t@t")
-    run_git(d, "config", "user.name", "t")
-    run_git(d, "commit", "--allow-empty", "-q", "-m", "root")
-    return d
 
 
 def write(path: str, content: str) -> None:
@@ -83,6 +72,27 @@ Override bundled correctness.
         self.assertEqual(payload["errors"][0]["review_result"]["outcome"], "NEEDS_CONTEXT")
         self.assertEqual(payload["errors"][0]["review_result"]["review_error"]["kind"],
                          "duplicate_reviewer")
+
+    def test_reviewers_reports_malformed_profile_without_crashing(self):
+        repo = new_repo()
+        write(
+            os.path.join(repo, ".agents", "autoreview", "reviewers", "broken.md"),
+            "no frontmatter here\n",
+        )
+
+        p = subprocess.run(
+            ["python3", GATE, "reviewers", "--cwd", repo],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(p.returncode, 0, p.stderr)
+        payload = json.loads(p.stdout)
+        self.assertEqual([r["reviewer"] for r in payload["reviewers"]],
+                         ["correctness", "security", "conventions"])
+        self.assertEqual([e["reviewer"] for e in payload["errors"]], ["broken"])
+        self.assertEqual(payload["errors"][0]["kind"], "invalid_prompt")
 
     def test_reviewers_resolves_cwd_to_git_root_for_project_local_profiles(self):
         repo = new_repo()

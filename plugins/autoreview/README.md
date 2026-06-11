@@ -9,7 +9,7 @@
 | `hooks/hooks.json` | Primary `PreToolUse` hook wiring for shell commands |
 | `hooks.json` | Compatibility copy of the hook definition; keep byte-identical with `hooks/hooks.json` |
 | `scripts/gate.sh` | POSIX fail-open wrapper that preserves only intentional exit `2` review blocks |
-| `scripts/gate.py` | Python entrypoint for the deterministic gate and `mark` subcommand |
+| `scripts/gate.py` | Python entrypoint for the deterministic gate and the `mark`, `reviewers`, and `check` subcommands |
 | `scripts/autoreview/` | Gate logic, git access, diff parsing, classification, marker, and schema validation |
 | `agents/*.md` | Provider-neutral bundled reviewer personas for correctness, security, and conventions |
 | `skills/autoreview/SKILL.md` | Host-agent workflow for staged context, reviewer fanout, aggregation, marker writing, and retrying the commit |
@@ -49,9 +49,17 @@ Bundled reviewer personas live in `agents/*.md`. A consumer repository may add p
 <repo-root>/.agents/autoreview/reviewers/<reviewer-id>.md
 ```
 
-Project-local reviewers are additive in v1. The bundled `correctness`, `security`, and `conventions` reviewers always run first, followed by project-local reviewers sorted by reviewer id. Project-local files cannot override bundled reviewers, disable bundled reviewers, configure ordering, select per-path reviewers, or select models/tools.
+Project-local reviewers are additive. The bundled `correctness`, `security`, and `conventions` reviewers always run first, followed by project-local reviewers sorted by reviewer id. Project-local files cannot override bundled reviewers, disable bundled reviewers, configure ordering, select per-path reviewers, or select models/tools. The discovery path is fixed by convention and not configurable.
 
 Each project-local reviewer must be a regular UTF-8 `.md` file below `.agents/autoreview/reviewers/`, with frontmatter `name` matching the filename stem, a non-empty `description`, a safe lowercase reviewer id, and a non-empty body. Invalid prompt files and duplicate reviewer ids are reported as `NEEDS_CONTEXT` reviewer metadata with zero feedback, so they block marker writing without inflating severity counts.
+
+Project-local reviewers are deterministically enforced, not just suggested:
+
+- The gate's block directive enumerates the full required reviewer set (bundled + discovered project-local ids) so the host agent knows exactly which reviewers to spawn.
+- `gate.py mark` validates the payload's `reviewers` array against that set and rejects the marker, naming the missing reviewers, if any required reviewer is absent or any project-local profile fails to load.
+- The gate re-validates coverage before honoring a marker, so a marker written before a project-local reviewer appeared never authorizes a commit; rerun the review and re-mark.
+
+Trust model: project-local profiles are repo-controlled prompt content executed by the host agent. The skill passes them to reviewer workers under the same wrapper and strict JSON response contract as bundled profiles, with no tool freedom beyond reading the staged material it provides, so a malicious profile degrades to a useless review rather than arbitrary action. Discovery itself never executes profile content; it only validates shape. Review profiles in the repos you commit to the same way you review their other tracked content.
 
 Use the read-only helper to inspect the effective reviewer set for a repo or worktree:
 
@@ -107,11 +115,19 @@ The aggregator injects `reviewer` into feedback items mechanically. Reviewer pro
 - `APPROVED`
 - `COMMENTED` with only non-blocking low/info feedback
 
-The marker validator rejects malformed JSON, old verdict names, `CHANGES_REQUESTED`, `NEEDS_CONTEXT`, missing fields, mismatched counts, and blocking feedback. Markers are keyed to the staged tree and consumed once.
+The marker validator rejects malformed JSON, old verdict names, `CHANGES_REQUESTED`, `NEEDS_CONTEXT`, missing fields, mismatched counts, and blocking feedback. `mark` additionally rejects payloads whose `reviewers` array does not cover every required reviewer (bundled + discovered project-local) for the target repo, and all payloads while any project-local profile fails to load. Markers are keyed to the staged tree and consumed once; the gate re-checks reviewer coverage at consumption time, so stale markers that predate a new project-local reviewer fall back to a fresh review instead of authorizing the commit. The marker payload version is unchanged (`2`): the payload shape is identical, and completeness is validated against the repo at mark and consume time, which also retires incomplete pre-existing markers naturally.
 
 Authorizing marker payloads may include reviewer metadata such as `summary`, `status`, and `error`, but only `reviewer` and an authorizing `outcome` are required for each reviewer entry.
 
 When reviewing an explicit `git -C <worktree> commit` target from another directory, pass `--cwd <worktree>` to write the marker into that target repo's git dir.
+
+Inspect marker status without consuming it:
+
+```sh
+python3 plugins/autoreview/scripts/gate.py check --cwd "$PWD"
+```
+
+`check` reports the staged-tree identity, marker path, status (`none`, `valid`, `invalid`, `insufficient` when required reviewers are missing, or `error` if the check itself failed), the required reviewer set, and any invalid project-local profiles. It never consumes a valid marker (a corrupt marker file is quarantined to `*.invalid`, exactly as the gate would). Piping hook input into `gate.py` performs a real gate decision and consumes a valid marker — use `check` for inspection.
 
 ## Validation
 

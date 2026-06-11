@@ -9,7 +9,7 @@
       "name": "autoreview",
       "source": "./plugins/autoreview",
       "description": "Deterministic pre-commit review gate for AI coding agents — intercepts git commit and triggers a multi-perspective review (correctness, security, conventions) of non-trivial, sensitive, or hand-resolved-merge staged changes before the commit proceeds. Requires python3.",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "author": {
         "name": "Accent Labs Inc."
       }

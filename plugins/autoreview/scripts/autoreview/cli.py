@@ -8,13 +8,28 @@ import sys
 from . import diffparse, markers
 from .core import decide_gate
 from .gitcmd import Git
-from .models import BLOCK, ProfileLoadError
-from .prompts import reviewers_payload
-from .schema import validate_marker_payload
+from .models import BLOCK, ProfileLoadError, safe_text
+from .prompts import reviewer_coverage, reviewers_payload
+from .schema import SchemaError, validate_marker_payload
 
 
 def _warn(msg: str) -> None:
-    sys.stderr.write(f"[autoreview] {msg}\n")
+    # safe_text: messages can embed repo-controlled text (profile paths, OS error strings), which
+    # must not inject lines into this agent-facing stream.
+    sys.stderr.write(f"[autoreview] {safe_text(msg)}\n")
+
+
+def _check_reviewer_coverage(payload: dict, repo_root: str) -> None:
+    """Reject a marker that does not cover every required reviewer (bundled + project-local) or
+    when any project-local profile fails to load — instructions alone do not enforce this."""
+    required, errors, missing = reviewer_coverage(payload, repo_root)
+    problems = ["invalid project-local reviewer profile %s: %s" % (e.path, e.message)
+                for e in errors]
+    if missing:
+        problems.append("payload reviewers missing required reviewer(s): %s; required set is: %s"
+                        % (", ".join(missing), ", ".join(required)))
+    if problems:
+        raise SchemaError("; ".join(problems))
 
 
 def _do_mark(payload_json: str, cwd: str) -> None:
@@ -23,8 +38,29 @@ def _do_mark(payload_json: str, cwd: str) -> None:
     mdir = markers.marker_dir(git)
     payload = json.loads(payload_json or "{}")
     validate_marker_payload(payload)
+    _check_reviewer_coverage(payload, git.worktree_root())
     markers.write(markers.marker_path(mdir, identity), payload)
     sys.stdout.write(f"marker written for {identity}\n")
+
+
+def _do_check(cwd: str) -> dict:
+    """Report marker status for the current staged tree WITHOUT consuming a valid marker.
+    (A corrupt marker file is still quarantined to `*.invalid`, exactly as the gate would.)"""
+    git = Git(os.path.abspath(cwd))
+    identity = git.compute_identity(git.detect_state())
+    mpath = markers.marker_path(markers.marker_dir(git), identity)
+    status, payload = markers.read_with_payload(mpath)
+    required, errors, missing = reviewer_coverage(payload, git.worktree_root())
+    if status == "valid" and (errors or missing):
+        status = "insufficient"
+    return {
+        "identity": identity,
+        "marker_path": mpath,
+        "status": status,  # none | valid | invalid | insufficient (cli emits "error" on failure)
+        "required_reviewers": required,
+        "missing_reviewers": missing,
+        "invalid_profiles": [e.to_dict() for e in errors],
+    }
 
 
 def _do_reviewers(cwd: str) -> None:
@@ -45,6 +81,17 @@ def main(argv=None) -> None:
             _do_mark(args.payload, args.cwd)
         except Exception as e:  # mark failures must not crash the agent's flow
             _warn(f"mark failed ({e})")
+        return
+    if argv and argv[0] == "check":
+        parser = argparse.ArgumentParser(prog="gate.py check")
+        parser.add_argument("--cwd", default=os.getcwd())
+        args = parser.parse_args(argv[1:])
+        try:
+            report = _do_check(args.cwd)
+        except Exception as e:  # check is read-only diagnostics; report cleanly, never crash
+            _warn(f"check failed ({e})")
+            report = {"status": "error", "error": str(e)}
+        sys.stdout.write(json.dumps(report, indent=2, sort_keys=True) + "\n")
         return
     if argv and argv[0] == "reviewers":
         parser = argparse.ArgumentParser(prog="gate.py reviewers")

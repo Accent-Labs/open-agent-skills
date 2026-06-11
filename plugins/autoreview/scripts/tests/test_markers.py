@@ -13,17 +13,17 @@ class TestMarkers(unittest.TestCase):
         f = m.marker_path(d, "abc")
         m.write(f, {"outcome": "APPROVED", "counts": {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0},
                     "feedback": [], "reviewers": [{"reviewer": "correctness", "outcome": "APPROVED"}]})
-        self.assertEqual(m.read(f), "valid")
+        self.assertEqual(m.read_with_payload(f)[0], "valid")
         m.consume(f)
         self.assertFalse(os.path.exists(f))
-        self.assertEqual(m.read(f), "none")
+        self.assertEqual(m.read_with_payload(f)[0], "none")
 
     def test_malformed_quarantined(self):
         d = tempfile.mkdtemp()
         f = m.marker_path(d, "xyz")
         with open(f, "w") as fh:
             fh.write("{ not json")
-        self.assertEqual(m.read(f), "invalid")
+        self.assertEqual(m.read_with_payload(f)[0], "invalid")
         self.assertTrue(os.path.exists(f + ".invalid"))
 
     def test_version_expiry(self):
@@ -31,11 +31,11 @@ class TestMarkers(unittest.TestCase):
         f1 = m.marker_path(d, "v")
         with open(f1, "w") as fh:
             fh.write(json.dumps({"version": "bogus", "created": int(time.time() * 1000)}))
-        self.assertEqual(m.read(f1), "invalid")
+        self.assertEqual(m.read_with_payload(f1)[0], "invalid")
         f2 = m.marker_path(d, "e")
         with open(f2, "w") as fh:
             fh.write(json.dumps({"version": m.MARKER_VERSION, "created": 1}))
-        self.assertEqual(m.read(f2), "invalid")
+        self.assertEqual(m.read_with_payload(f2)[0], "invalid")
 
     def test_sanitize_merge_identity(self):
         d = tempfile.mkdtemp()
@@ -46,12 +46,12 @@ class TestMarkers(unittest.TestCase):
         f1 = m.marker_path(d, "badcreated")
         with open(f1, "w") as fh:
             fh.write(json.dumps({"version": m.MARKER_VERSION, "created": "not-a-number"}))
-        self.assertEqual(m.read(f1), "invalid")  # not fail-open
+        self.assertEqual(m.read_with_payload(f1)[0], "invalid")  # not fail-open
         self.assertTrue(os.path.exists(f1 + ".invalid"))
         f2 = m.marker_path(d, "notdict")
         with open(f2, "w") as fh:
             fh.write(json.dumps([1, 2, 3]))  # valid JSON, not an object
-        self.assertEqual(m.read(f2), "invalid")
+        self.assertEqual(m.read_with_payload(f2)[0], "invalid")
         self.assertTrue(os.path.exists(f2 + ".invalid"))
 
     def test_non_authorizing_payload_fails_closed(self):
@@ -76,7 +76,7 @@ class TestMarkers(unittest.TestCase):
             body["created"] = int(time.time() * 1000)
             with open(f, "w") as fh:
                 fh.write(json.dumps(body))
-            self.assertEqual(m.read(f), "invalid", ident)
+            self.assertEqual(m.read_with_payload(f)[0], "invalid", ident)
 
 
 if __name__ == "__main__":

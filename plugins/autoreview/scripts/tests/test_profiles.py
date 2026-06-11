@@ -79,6 +79,19 @@ class TestProfiles(unittest.TestCase):
         self.assertRegex(body, r"one isolated worker per reviewer profile")
         self.assertNotRegex(body, r"one isolated worker per file")
 
+    def test_skill_validation_uses_non_consuming_check(self):
+        body = parse_frontmatter(read(SKILL))[1]
+        self.assertRegex(body, r"gate\.py\"? check")
+        self.assertRegex(body, r"(?is)consum\w+.*valid marker|valid marker.*consum\w+")
+
+    def test_skill_requires_marker_to_cover_discovered_reviewers(self):
+        body = parse_frontmatter(read(SKILL))[1]
+        self.assertRegex(body, r"(?is)reviewers.*must.*every discovered reviewer")
+
+    def test_skill_documents_project_local_trust_model(self):
+        body = parse_frontmatter(read(SKILL))[1]
+        self.assertRegex(body, r"(?is)project-local.*repo-controlled")
+
     def test_profiles_define_non_overlapping_roles(self):
         for filename in sorted(n for n in os.listdir(AGENTS) if n.endswith(".md")):
             body = parse_frontmatter(read(os.path.join(AGENTS, filename)))[1]

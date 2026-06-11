@@ -30,31 +30,32 @@ def marker_path(directory: str, identity: str) -> str:
     return os.path.join(directory, "pass-" + _sanitize(identity))
 
 
-def read(path: str) -> str:
-    """'none' | 'valid' | 'invalid'. Any malformed payload is quarantined and treated as invalid
-    (fail-closed: the marker is a trust boundary, so it must never reach the gate's fail-open path)."""
+def read_with_payload(path: str):
+    """('none' | 'valid' | 'invalid', payload-or-None) without consuming the marker. Any malformed
+    payload is quarantined and treated as invalid (fail-closed: the marker is a trust boundary, so
+    it must never reach the gate's fail-open path)."""
     try:
         with open(path, encoding="utf-8") as fh:
             data = json.load(fh)
         if not isinstance(data, dict):
             raise ValueError("marker is not a JSON object")
         if data.get("version") != MARKER_VERSION:
-            return "invalid"  # stale/old version, not corrupt -> not quarantined
+            return "invalid", None  # stale/old version, not corrupt -> not quarantined
         created = data.get("created")
         if isinstance(created, bool) or not isinstance(created, (int, float)):
             raise ValueError("marker 'created' is not a number")
         if _now_ms() - created > EXPIRY_MS:
-            return "invalid"
+            return "invalid", None
         validate_marker_payload(data)
-        return "valid"
+        return "valid", data
     except FileNotFoundError:
-        return "none"
+        return "none", None
     except Exception:
         try:
             os.replace(path, path + ".invalid")  # quarantine any corrupt/malformed marker
         except OSError:
             pass
-        return "invalid"
+        return "invalid", None
 
 
 def write(path: str, payload: dict) -> None:

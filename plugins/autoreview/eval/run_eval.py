@@ -70,8 +70,13 @@ def _mk(name, cmd, setup, expect):
             self.assertEqual(code, 0, err)
         else:
             self.assertEqual(code, 2, "expected block, got %d (%s)" % (code, err))
-            pat = (r"(?i)stage your changes explicitly|plain staged commits"
-                   if expect == "UNSUPPORTED" else r"(?i)autoreview required|review")
+            if expect == "UNSUPPORTED":
+                pat = r"(?i)stage your changes explicitly|plain staged commits"
+            elif expect.startswith("REVIEW:"):
+                # the block directive must enumerate this discovered reviewer id
+                pat = r"(?i)autoreview required(?s:.*)" + expect.split(":", 1)[1]
+            else:
+                pat = r"(?i)autoreview required|review"
             self.assertRegex(err, pat)
     return test
 

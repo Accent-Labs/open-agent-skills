@@ -5,19 +5,24 @@ import tempfile
 import unittest
 
 from autoreview import core, markers
+from tests.helpers import approved_marker, write_profile as write_local_profile
 
 
 class FakeGit:
     """Stub Git so decide_gate's orchestration is unit-tested without real repos.
     Uses a real temp dir as the marker dir so the marker read/consume path is exercised."""
 
-    def __init__(self, state="normal", numstat="", merge=False, identity="a" * 40):
+    def __init__(self, state="normal", numstat="", merge=False, identity="a" * 40, root=None):
         self.cwd = tempfile.mkdtemp()
         self._state = state
         self._numstat = numstat
         self._merge = merge
         self._identity = identity
         self._mdir = tempfile.mkdtemp()
+        self._root = root if root is not None else tempfile.mkdtemp()
+
+    def worktree_root(self):
+        return self._root
 
     def detect_state(self):
         return self._state
@@ -37,12 +42,7 @@ class FakeGit:
 
 NONTRIVIAL = "40\t0\tsrc/a.js\0"
 TRIVIAL = "1\t0\tREADME.md\0"
-APPROVED_MARKER = {
-    "outcome": "APPROVED",
-    "counts": {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0},
-    "feedback": [],
-    "reviewers": [{"reviewer": "correctness", "outcome": "APPROVED"}],
-}
+APPROVED_MARKER = approved_marker()
 
 
 def decide(fake, command="git commit -m x"):
@@ -213,6 +213,67 @@ class TestDecideGate(unittest.TestCase):
             dec = decide(FakeGit(numstat=TRIVIAL), cmd)
             self.assertEqual(dec.action, "BLOCK", cmd)
             self.assertIn("single plain", dec.message)
+
+    def test_block_directive_enumerates_required_reviewers(self):
+        fake = FakeGit(numstat=NONTRIVIAL)
+        write_local_profile(fake._root, "foo")
+        write_local_profile(fake._root, "bar")
+        dec = decide(fake)
+        self.assertEqual(dec.action, "BLOCK")
+        self.assertRegex(dec.message, r"correctness, security, conventions, bar, foo")
+
+    def test_block_directive_enumerates_bundled_reviewers_without_local_dir(self):
+        dec = decide(FakeGit(numstat=NONTRIVIAL))
+        self.assertEqual(dec.action, "BLOCK")
+        self.assertRegex(dec.message, r"correctness, security, conventions")
+
+    def test_block_directive_reports_invalid_local_profiles(self):
+        fake = FakeGit(numstat=NONTRIVIAL)
+        write_local_profile(fake._root, "broken", "no frontmatter\n")
+        dec = decide(fake)
+        self.assertEqual(dec.action, "BLOCK")
+        self.assertRegex(dec.message, r"(?i)invalid project-local reviewer profile")
+
+    def test_merge_directive_enumerates_required_reviewers(self):
+        fake = FakeGit(state="merge", merge=True, numstat="")
+        write_local_profile(fake._root, "foo")
+        dec = decide(fake)
+        self.assertEqual(dec.action, "BLOCK")
+        self.assertRegex(dec.message, r"correctness, security, conventions, foo")
+
+    def test_marker_missing_local_reviewer_is_not_honored(self):
+        fake = FakeGit(numstat=NONTRIVIAL, identity="f" * 40)
+        write_local_profile(fake._root, "foo")
+        mdir = markers.marker_dir(fake)
+        markers.write(markers.marker_path(mdir, fake._identity), APPROVED_MARKER)
+        dec = decide(fake)
+        self.assertEqual(dec.action, "BLOCK")  # bundled-only marker does not cover foo
+        self.assertIn("foo", dec.message)
+        # a complete re-mark for the same identity overwrites and authorizes once
+        markers.write(markers.marker_path(mdir, fake._identity),
+                      approved_marker("correctness", "security", "conventions", "foo"))
+        self.assertEqual(decide(fake).action, "ALLOW")
+        self.assertEqual(decide(fake).action, "BLOCK")
+
+    def test_marker_with_invalid_local_profile_is_not_honored(self):
+        fake = FakeGit(numstat=NONTRIVIAL, identity="1" * 40)
+        write_local_profile(fake._root, "broken", "no frontmatter\n")
+        mdir = markers.marker_dir(fake)
+        markers.write(markers.marker_path(mdir, fake._identity), APPROVED_MARKER)
+        dec = decide(fake)
+        self.assertEqual(dec.action, "BLOCK")
+        self.assertRegex(dec.message, r"(?i)invalid project-local reviewer profile")
+
+    def test_discovery_failure_degrades_to_bundled_requirements(self):
+        class BrokenRootGit(FakeGit):
+            def worktree_root(self):
+                raise RuntimeError("no worktree")
+
+        fake = BrokenRootGit(numstat=NONTRIVIAL, identity="2" * 40)
+        dec = decide(fake)
+        self.assertEqual(dec.action, "BLOCK")  # directive still produced
+        markers.write(markers.marker_path(markers.marker_dir(fake), fake._identity), APPROVED_MARKER)
+        self.assertEqual(decide(fake).action, "ALLOW")  # bundled coverage still honored
 
     def test_directive_sanitizes_control_chars_in_paths(self):
         from autoreview.models import FileDelta
