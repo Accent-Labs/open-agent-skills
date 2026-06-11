@@ -5,6 +5,7 @@ import tempfile
 import unittest
 
 from autoreview import core, markers
+from tests.helpers import approved_marker, write_profile as write_local_profile
 
 
 class FakeGit:
@@ -41,27 +42,7 @@ class FakeGit:
 
 NONTRIVIAL = "40\t0\tsrc/a.js\0"
 TRIVIAL = "1\t0\tREADME.md\0"
-def approved_marker(*reviewers):
-    ids = reviewers or ("correctness", "security", "conventions")
-    return {
-        "outcome": "APPROVED",
-        "counts": {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0},
-        "feedback": [],
-        "reviewers": [{"reviewer": r, "outcome": "APPROVED"} for r in ids],
-    }
-
-
 APPROVED_MARKER = approved_marker()
-
-
-def write_local_profile(root, reviewer, content=None):
-    d = os.path.join(root, ".agents", "autoreview", "reviewers")
-    os.makedirs(d, exist_ok=True)
-    if content is None:
-        content = ("---\nname: %s\ndescription: Reviews staged changes for %s concerns.\n---\n\n"
-                   "Check staged changes for %s concerns.\n") % (reviewer, reviewer, reviewer)
-    with open(os.path.join(d, reviewer + ".md"), "w", encoding="utf-8") as fh:
-        fh.write(content)
 
 
 def decide(fake, command="git commit -m x"):

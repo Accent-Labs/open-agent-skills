@@ -95,13 +95,13 @@ class TestNumstat(unittest.TestCase):
 
 class TestUnsafe(unittest.TestCase):
     def test_safe_shapes(self):
-        self.assertEqual(d.analyze_command("git commit -m x"), ([["-m", "x"]], False, False, True))
-        self.assertEqual(d.analyze_command("/usr/bin/git commit -m x"), ([["-m", "x"]], False, False, True))
-        self.assertEqual(d.analyze_command("echo done && git commit -m x"), ([["-m", "x"]], False, False, True))
-        self.assertEqual(d.analyze_command("env FOO=bar git commit -m x"), ([["-m", "x"]], False, False, True))
-        self.assertEqual(d.analyze_command("rtk git commit -m x"), ([["-m", "x"]], False, False, True))
-        self.assertEqual(d.analyze_command("rtk /usr/bin/git commit -m x"), ([["-m", "x"]], False, False, True))
-        self.assertEqual(d.analyze_command("ls -la"), ([], False, False, False))
+        self.assertEqual(d.analyze_command("git commit -m x"), ([["-m", "x"]], False, False, True, None))
+        self.assertEqual(d.analyze_command("/usr/bin/git commit -m x"), ([["-m", "x"]], False, False, True, None))
+        self.assertEqual(d.analyze_command("echo done && git commit -m x"), ([["-m", "x"]], False, False, True, None))
+        self.assertEqual(d.analyze_command("env FOO=bar git commit -m x"), ([["-m", "x"]], False, False, True, None))
+        self.assertEqual(d.analyze_command("rtk git commit -m x"), ([["-m", "x"]], False, False, True, None))
+        self.assertEqual(d.analyze_command("rtk /usr/bin/git commit -m x"), ([["-m", "x"]], False, False, True, None))
+        self.assertEqual(d.analyze_command("ls -la"), ([], False, False, False, None))
 
     def test_git_dash_c_commit_targets_are_safe_for_direct_commits(self):
         analysis = d.analyze_command("git -C /work/tree commit -m x")
@@ -144,17 +144,16 @@ class TestUnsafe(unittest.TestCase):
                     "sudo git commit -m x",
                     "sh -c 'git -c user.name=t commit -m x'",
                     "echo $(/usr/bin/git commit -m x)"):
-            _, _, unsafe, has_commit = d.analyze_command(cmd)
-            self.assertTrue(unsafe, cmd)
-            self.assertTrue(has_commit, cmd)
+            a = d.analyze_command(cmd)
+            self.assertTrue(a.unsafe, cmd)
+            self.assertTrue(a.has_commit, cmd)
 
     def test_quoted_text_is_not_a_commit(self):
-        self.assertEqual(d.analyze_command('echo "git commit"'), ([], False, False, False))
-        _, _, _, has_commit = d.analyze_command('env -S "echo hi"')
-        self.assertFalse(has_commit)  # env -S without a git commit -> not gated
+        self.assertEqual(d.analyze_command('echo "git commit"'), ([], False, False, False, None))
+        self.assertFalse(d.analyze_command('env -S "echo hi"').has_commit)  # env -S without a git commit -> not gated
 
     def test_newline_separated_commit_is_detected(self):
-        commits, mut, unsafe, has_commit = d.analyze_command("git add x\ngit commit -m x")
+        commits, mut, unsafe, has_commit, _ = d.analyze_command("git add x\ngit commit -m x")
         self.assertEqual(commits, [["-m", "x"]])
         self.assertTrue(mut)
         self.assertFalse(unsafe)
@@ -176,23 +175,23 @@ class TestUnsafe(unittest.TestCase):
             'g(){ git "$@"; }; g commit -m x',
             "sudo git commit -m x",
         ):
-            _, _, unsafe, has_commit = d.analyze_command(cmd)
-            self.assertTrue(unsafe, cmd)
-            self.assertTrue(has_commit, cmd)
+            a = d.analyze_command(cmd)
+            self.assertTrue(a.unsafe, cmd)
+            self.assertTrue(a.has_commit, cmd)
 
     def test_non_read_only_git_before_commit_counts_as_mutator(self):
         for cmd in (
             "git update-index --add src/a.js && git commit -m x",
             "git checkout -- src/a.js && git commit -m x",
         ):
-            commits, mut, unsafe, has_commit = d.analyze_command(cmd)
+            commits, mut, unsafe, has_commit, _ = d.analyze_command(cmd)
             self.assertEqual(commits, [["-m", "x"]], cmd)
             self.assertTrue(mut, cmd)
             self.assertFalse(unsafe, cmd)
             self.assertTrue(has_commit, cmd)
 
     def test_read_only_git_before_commit_does_not_count_as_mutator(self):
-        commits, mut, unsafe, has_commit = d.analyze_command("git status && git commit -m x")
+        commits, mut, unsafe, has_commit, _ = d.analyze_command("git status && git commit -m x")
         self.assertEqual(commits, [["-m", "x"]])
         self.assertFalse(mut)
         self.assertFalse(unsafe)

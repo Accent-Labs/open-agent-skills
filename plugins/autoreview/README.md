@@ -127,7 +127,7 @@ Inspect marker status without consuming it:
 python3 plugins/autoreview/scripts/gate.py check --cwd "$PWD"
 ```
 
-`check` reports the staged-tree identity, marker path, status (`none`, `valid`, `invalid`, `insufficient` when required reviewers are missing, or `error` if the check itself failed), the required reviewer set, and any invalid project-local profiles. Piping hook input into `gate.py` performs a real gate decision and consumes a valid marker — use `check` for inspection.
+`check` reports the staged-tree identity, marker path, status (`none`, `valid`, `invalid`, `insufficient` when required reviewers are missing, or `error` if the check itself failed), the required reviewer set, and any invalid project-local profiles. It never consumes a valid marker (a corrupt marker file is quarantined to `*.invalid`, exactly as the gate would). Piping hook input into `gate.py` performs a real gate decision and consumes a valid marker — use `check` for inspection.
 
 ## Validation
 

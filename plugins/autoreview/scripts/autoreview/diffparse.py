@@ -334,14 +334,14 @@ def analyze_command(command: str) -> CommandAnalysis:
 
 def scan_commits(command: str):
     """Back-compat: (commits, has_mutator)."""
-    commits, has_mutator, _, _ = analyze_command(command)
-    return commits, has_mutator
+    analysis = analyze_command(command)
+    return analysis.commits, analysis.has_mutator
 
 
 def find_git_commit(command: str) -> Optional[List[str]]:
     """Arg tokens after `commit` for the FIRST git commit, else None.
     Empty list = `git commit` with no args (distinct from None)."""
-    commits, _, _, _ = analyze_command(command)
+    commits = analyze_command(command).commits
     return commits[0] if commits else None
 
 

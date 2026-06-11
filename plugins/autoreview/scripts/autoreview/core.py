@@ -6,7 +6,7 @@ from typing import List, Optional
 from . import diffparse, markers, prompts, schema
 from .classify import classify
 from .gitcmd import Git
-from .models import ALLOW, BLOCK, SKIP, Decision, FileDelta
+from .models import ALLOW, BLOCK, SKIP, Decision, FileDelta, safe_text
 
 # Absolute install dir of this plugin (…/plugins/autoreview), derived from this file's location so
 # the skill can locate scripts/ even if $CLAUDE_PLUGIN_ROOT/$PLUGIN_ROOT are unset in its context.
@@ -31,10 +31,7 @@ COMPOUND_DIRECTIVE = (
 )
 
 
-def _safe_path(p: str) -> str:
-    # Strip control/newline/non-printable chars so a crafted filename can't inject text into the
-    # agent-facing directive.
-    return "".join(c if (c.isprintable() and c not in "\r\n") else "?" for c in p)
+_safe_path = safe_text  # repo-controlled paths must never inject text into the directive
 
 
 def review_directive(reason: str, files: Optional[List[FileDelta]],
@@ -62,15 +59,17 @@ def review_directive(reason: str, files: Optional[List[FileDelta]],
             f"$CLAUDE_PLUGIN_ROOT/$PLUGIN_ROOT are unset.)").strip()
 
 
-def _required_reviewers(git):
-    """Required reviewer ids plus project-local profile load errors for the repo under review.
-    Per-file problems already surface as load errors (fail closed), so an exception here is an
-    environment fault, not repo content — degrade to the constant bundled set rather than wedging
-    or skipping the gate."""
+def _coverage(git, payload=None):
+    """(required_ids, load_errors, missing_ids) for the repo under review. Per-file problems
+    already surface as load errors (fail closed), so an exception here is an environment fault,
+    not repo content — degrade to the constant bundled set rather than wedging or skipping the
+    gate."""
     try:
-        return prompts.required_reviewer_ids(git.worktree_root())
+        return prompts.reviewer_coverage(payload, git.worktree_root())
     except Exception:
-        return list(prompts.BUNDLED_REVIEWER_ORDER), []
+        required = list(prompts.BUNDLED_REVIEWER_ORDER)
+        missing = schema.missing_reviewers(payload, required) if payload else []
+        return required, [], missing
 
 
 def _effective_cwd(cwd: str, target_cwd: Optional[str]) -> str:
@@ -124,8 +123,8 @@ def decide_gate(inp: dict, git_factory=Git) -> Decision:
     status, payload = markers.read_with_payload(mpath)
     required = profile_errors = None  # discovered lazily: SKIP/no-marker paths never read profiles
     if status == "valid":
-        required, profile_errors = _required_reviewers(git)
-        if not profile_errors and not schema.missing_reviewers(payload, required):
+        required, profile_errors, missing = _coverage(git, payload)
+        if not profile_errors and not missing:
             markers.consume(mpath)
             return Decision(ALLOW)
         # A marker that does not cover the currently required reviewer set never authorizes a
@@ -134,7 +133,7 @@ def decide_gate(inp: dict, git_factory=Git) -> Decision:
 
     if state == "merge" and merge_forces:
         if required is None:
-            required, profile_errors = _required_reviewers(git)
+            required, profile_errors, _ = _coverage(git)
         return Decision(BLOCK, review_directive("merge conflict resolution", None,
                                                 required, profile_errors))
 
@@ -143,5 +142,5 @@ def decide_gate(inp: dict, git_factory=Git) -> Decision:
     if result.action == SKIP:
         return Decision(ALLOW)
     if required is None:
-        required, profile_errors = _required_reviewers(git)
+        required, profile_errors, _ = _coverage(git)
     return Decision(BLOCK, review_directive(result.reason, files, required, profile_errors))

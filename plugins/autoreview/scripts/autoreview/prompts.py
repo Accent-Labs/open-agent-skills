@@ -14,7 +14,7 @@ BUNDLED_REVIEWERS_DIR = os.path.join(PLUGIN_ROOT, "agents")
 BUNDLED_REVIEWER_ORDER = ("correctness", "security", "conventions")
 LOCAL_REVIEWERS_REL = os.path.join(".agents", "autoreview", "reviewers")
 MAX_PROFILE_BYTES = 64 * 1024
-REVIEWER_ID_RE = re.compile(r"^[a-z][a-z0-9_-]*$")
+REVIEWER_ID_RE = re.compile(r"^[a-z][a-z0-9_-]*\Z")  # \Z: `$` would match before a trailing newline
 
 
 class ProfileParseError(ValueError):
@@ -101,6 +101,12 @@ def _bundled_paths(bundled_dir: str) -> List[str]:
     return [os.path.join(bundled_dir, reviewer + ".md") for reviewer in BUNDLED_REVIEWER_ORDER]
 
 
+def _bundled_seen() -> Dict[str, str]:
+    # Bundled ids are reserved unconditionally — even when a bundled file fails to load, a
+    # project-local profile may not claim its id.
+    return {r: os.path.join(BUNDLED_REVIEWERS_DIR, r + ".md") for r in BUNDLED_REVIEWER_ORDER}
+
+
 def _discover_local_profiles(
     repo_root: str,
     seen: Dict[str, str],
@@ -148,18 +154,14 @@ def discover_reviewer_profiles(
 ) -> Tuple[List[ReviewerProfile], List[ProfileLoadError]]:
     profiles: List[ReviewerProfile] = []
     errors: List[ProfileLoadError] = []
-    seen: Dict[str, str] = {}
 
     for path in _bundled_paths(bundled_dir):
         try:
-            profile = _load_profile_file(path, "bundled")
+            profiles.append(_load_profile_file(path, "bundled"))
         except ProfileParseError as exc:
             errors.append(_error_from_parse(path, "bundled", exc))
-            continue
-        profiles.append(profile)
-        seen[profile.reviewer] = profile.path
 
-    local_profiles, local_errors = _discover_local_profiles(repo_root, seen)
+    local_profiles, local_errors = _discover_local_profiles(repo_root, _bundled_seen())
     return profiles + local_profiles, errors + local_errors
 
 
@@ -167,9 +169,16 @@ def required_reviewer_ids(repo_root: str) -> Tuple[List[str], List[ProfileLoadEr
     """Reviewer ids an authorizing marker must cover for this repo: the bundled set plus every
     project-local profile that loads. Project-local load errors are returned so callers can
     fail closed on them; bundled ids are constant and never depend on file reads."""
-    seen = {r: os.path.join(BUNDLED_REVIEWERS_DIR, r + ".md") for r in BUNDLED_REVIEWER_ORDER}
-    local_profiles, errors = _discover_local_profiles(repo_root, seen)
+    local_profiles, errors = _discover_local_profiles(repo_root, _bundled_seen())
     return list(BUNDLED_REVIEWER_ORDER) + [p.reviewer for p in local_profiles], errors
+
+
+def reviewer_coverage(payload, repo_root: str):
+    """(required_ids, load_errors, missing_ids) — the single coverage predicate shared by mark,
+    check, and the gate: a marker authorizes only when load_errors and missing_ids are empty."""
+    required, errors = required_reviewer_ids(repo_root)
+    missing = schema.missing_reviewers(payload, required) if payload else []
+    return required, errors, missing
 
 
 def reviewer_response_contract_markdown(reviewer: str) -> str:

@@ -58,10 +58,6 @@ def read_with_payload(path: str):
         return "invalid", None
 
 
-def read(path: str) -> str:
-    return read_with_payload(path)[0]
-
-
 def write(path: str, payload: dict) -> None:
     validate_marker_payload(payload)
     body = dict(payload)

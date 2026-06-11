@@ -3,40 +3,13 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-import tempfile
 import unittest
 
 
+from tests.helpers import approved_marker, new_repo, stage_nontrivial, write_profile
+
 GATE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "gate.py")
-APPROVED_MARKER = {
-    "outcome": "APPROVED",
-    "counts": {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0},
-    "feedback": [],
-    "reviewers": [
-        {"reviewer": "correctness", "outcome": "APPROVED"},
-        {"reviewer": "security", "outcome": "APPROVED"},
-        {"reviewer": "conventions", "outcome": "APPROVED"},
-    ],
-}
-
-
-def run(d, *args):
-    return subprocess.run(["git", *args], cwd=d, capture_output=True, text=True, check=True)
-
-
-def new_repo():
-    d = tempfile.mkdtemp(prefix="ar-check-")
-    run(d, "init", "-q", "-b", "main")
-    run(d, "config", "user.email", "t@t")
-    run(d, "config", "user.name", "t")
-    run(d, "commit", "--allow-empty", "-q", "-m", "root")
-    return d
-
-
-def stage_nontrivial(d):
-    with open(os.path.join(d, "src.py"), "w") as fh:
-        fh.write("x\n" * 40)
-    run(d, "add", "src.py")
+APPROVED_MARKER = approved_marker()
 
 
 def gate_check(d):
@@ -80,11 +53,7 @@ class TestCheckCli(unittest.TestCase):
         subprocess.run(["python3", GATE, "mark", "--cwd", d, "--payload",
                         json.dumps(APPROVED_MARKER)], capture_output=True, text=True, check=True)
         # a project-local reviewer appears after the mark (untracked, so identity is unchanged)
-        profile_dir = os.path.join(d, ".agents", "autoreview", "reviewers")
-        os.makedirs(profile_dir)
-        with open(os.path.join(profile_dir, "foo.md"), "w", encoding="utf-8") as fh:
-            fh.write("---\nname: foo\ndescription: Reviews staged changes for foo concerns.\n"
-                     "---\n\nCheck staged changes for foo concerns.\n")
+        write_profile(d, "foo")
         code, report = gate_check(d)
         self.assertEqual(code, 0)
         self.assertEqual(report["status"], "insufficient")

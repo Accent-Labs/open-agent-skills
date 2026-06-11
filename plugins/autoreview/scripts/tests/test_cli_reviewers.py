@@ -7,20 +7,9 @@ import tempfile
 import unittest
 
 
+from tests.helpers import new_repo
+
 GATE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "gate.py")
-
-
-def run_git(d: str, *args: str) -> None:
-    subprocess.run(["git", *args], cwd=d, capture_output=True, text=True, check=True)
-
-
-def new_repo() -> str:
-    d = tempfile.mkdtemp(prefix="ar-reviewers-")
-    run_git(d, "init", "-q", "-b", "main")
-    run_git(d, "config", "user.email", "t@t")
-    run_git(d, "config", "user.name", "t")
-    run_git(d, "commit", "--allow-empty", "-q", "-m", "root")
-    return d
 
 
 def write(path: str, content: str) -> None:
