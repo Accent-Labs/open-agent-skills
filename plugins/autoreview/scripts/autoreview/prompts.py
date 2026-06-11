@@ -101,6 +101,47 @@ def _bundled_paths(bundled_dir: str) -> List[str]:
     return [os.path.join(bundled_dir, reviewer + ".md") for reviewer in BUNDLED_REVIEWER_ORDER]
 
 
+def _discover_local_profiles(
+    repo_root: str,
+    seen: Dict[str, str],
+) -> Tuple[List[ReviewerProfile], List[ProfileLoadError]]:
+    profiles: List[ReviewerProfile] = []
+    errors: List[ProfileLoadError] = []
+    local_dir = os.path.join(repo_root, LOCAL_REVIEWERS_REL)
+    if not os.path.isdir(local_dir):
+        return profiles, errors
+
+    for filename in sorted(os.listdir(local_dir)):
+        if not filename.endswith(".md"):
+            continue
+        path = os.path.join(local_dir, filename)
+        try:
+            profile = _load_profile_file(path, "project_local")
+        except ProfileParseError as exc:
+            errors.append(_error_from_parse(path, "project_local", exc))
+            continue
+        except OSError as exc:
+            # An unreadable profile must surface as a load error (which blocks marking), never be
+            # silently skipped: skipping would let a required reviewer vanish from the gate.
+            errors.append(ProfileLoadError(
+                _safe_reviewer_from_path(path), "project_local", path,
+                "invalid_prompt", "reviewer prompt is unreadable: %s" % exc,
+            ))
+            continue
+        if profile.reviewer in seen:
+            errors.append(ProfileLoadError(
+                profile.reviewer,
+                "project_local",
+                path,
+                "duplicate_reviewer",
+                "reviewer %s is already defined by %s" % (profile.reviewer, seen[profile.reviewer]),
+            ))
+            continue
+        profiles.append(profile)
+        seen[profile.reviewer] = profile.path
+    return profiles, errors
+
+
 def discover_reviewer_profiles(
     repo_root: str,
     bundled_dir: str = BUNDLED_REVIEWERS_DIR,
@@ -118,31 +159,17 @@ def discover_reviewer_profiles(
         profiles.append(profile)
         seen[profile.reviewer] = profile.path
 
-    local_dir = os.path.join(repo_root, LOCAL_REVIEWERS_REL)
-    if not os.path.isdir(local_dir):
-        return profiles, errors
+    local_profiles, local_errors = _discover_local_profiles(repo_root, seen)
+    return profiles + local_profiles, errors + local_errors
 
-    for filename in sorted(os.listdir(local_dir)):
-        if not filename.endswith(".md"):
-            continue
-        path = os.path.join(local_dir, filename)
-        try:
-            profile = _load_profile_file(path, "project_local")
-        except ProfileParseError as exc:
-            errors.append(_error_from_parse(path, "project_local", exc))
-            continue
-        if profile.reviewer in seen:
-            errors.append(ProfileLoadError(
-                profile.reviewer,
-                "project_local",
-                path,
-                "duplicate_reviewer",
-                "reviewer %s is already defined by %s" % (profile.reviewer, seen[profile.reviewer]),
-            ))
-            continue
-        profiles.append(profile)
-        seen[profile.reviewer] = profile.path
-    return profiles, errors
+
+def required_reviewer_ids(repo_root: str) -> Tuple[List[str], List[ProfileLoadError]]:
+    """Reviewer ids an authorizing marker must cover for this repo: the bundled set plus every
+    project-local profile that loads. Project-local load errors are returned so callers can
+    fail closed on them; bundled ids are constant and never depend on file reads."""
+    seen = {r: os.path.join(BUNDLED_REVIEWERS_DIR, r + ".md") for r in BUNDLED_REVIEWER_ORDER}
+    local_profiles, errors = _discover_local_profiles(repo_root, seen)
+    return list(BUNDLED_REVIEWER_ORDER) + [p.reviewer for p in local_profiles], errors
 
 
 def reviewer_response_contract_markdown(reviewer: str) -> str:

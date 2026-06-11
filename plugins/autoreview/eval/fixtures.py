@@ -55,6 +55,14 @@ def noverify(d, g):
     g("add", "src/a.js")
 
 
+def localreviewer(d, g):
+    w(d, ".agents/autoreview/reviewers/test-local.md",
+      "---\nname: test-local\ndescription: Reviews staged changes for local concerns.\n---\n\n"
+      "Check staged changes for local concerns.\n")
+    w(d, "src/a.js", "x\n" * 40)
+    g("add", "src/a.js")
+
+
 def cherry(d, g):
     with open(os.path.join(d, ".git", "CHERRY_PICK_HEAD"), "w") as fh:
         fh.write("dead\n")
@@ -76,4 +84,5 @@ FIXTURES = [
     ("noverify->allow", "git commit --no-verify -m x", noverify, "ALLOW"),
     ("merge->review", "git commit -m merge", "MERGE", "REVIEW"),
     ("cherry->allow", "git commit -m x", cherry, "ALLOW"),
+    ("localreviewer->review", "git commit -m x", localreviewer, "REVIEW:test-local"),
 ]

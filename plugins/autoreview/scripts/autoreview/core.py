@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from typing import List, Optional
 
-from . import diffparse, markers
+from . import diffparse, markers, prompts, schema
 from .classify import classify
 from .gitcmd import Git
 from .models import ALLOW, BLOCK, SKIP, Decision, FileDelta
@@ -37,19 +37,40 @@ def _safe_path(p: str) -> str:
     return "".join(c if (c.isprintable() and c not in "\r\n") else "?" for c in p)
 
 
-def review_directive(reason: str, files: Optional[List[FileDelta]]) -> str:
+def review_directive(reason: str, files: Optional[List[FileDelta]],
+                     required=None, profile_errors=()) -> str:
     if files:
         names = ", ".join(_safe_path(f.path) for f in files[:20])
         preview = f" - {names}" if names else ""
         stats = f"Change: {len(files)} files{preview}. "
     else:
         stats = ""
+    # Reviewer ids are validated against REVIEWER_ID_RE at load time, so enumerating them here
+    # cannot inject text into the directive; error paths still go through _safe_path.
+    required_txt = f"Required reviewers: {', '.join(required)}. " if required else ""
+    errors_txt = ""
+    if profile_errors:
+        paths = ", ".join(_safe_path(e.path) for e in list(profile_errors)[:5])
+        errors_txt = (f"Invalid project-local reviewer profile(s) that must be fixed before "
+                      f"committing (the marker is rejected while they fail to load): {paths}. ")
     return (f"Autoreview required ({reason}). Invoke the `autoreview` skill now: review the staged "
             f"change with the bundled and project-local reviewer profiles, address or dispute "
             f"findings, then re-commit. Project-local reviewers live under "
             f".agents/autoreview/reviewers/. "
+            f"{required_txt}{errors_txt}"
             f"{stats}(autoreview plugin dir: {PLUGIN_ROOT} — use this as ROOT for scripts/ if "
             f"$CLAUDE_PLUGIN_ROOT/$PLUGIN_ROOT are unset.)").strip()
+
+
+def _required_reviewers(git):
+    """Required reviewer ids plus project-local profile load errors for the repo under review.
+    Per-file problems already surface as load errors (fail closed), so an exception here is an
+    environment fault, not repo content — degrade to the constant bundled set rather than wedging
+    or skipping the gate."""
+    try:
+        return prompts.required_reviewer_ids(git.worktree_root())
+    except Exception:
+        return list(prompts.BUNDLED_REVIEWER_ORDER), []
 
 
 def _effective_cwd(cwd: str, target_cwd: Optional[str]) -> str:
@@ -100,15 +121,27 @@ def decide_gate(inp: dict, git_factory=Git) -> Decision:
     mdir = markers.marker_dir(git)
     markers.gc(mdir)
     mpath = markers.marker_path(mdir, identity)
-    if markers.read(mpath) == "valid":
-        markers.consume(mpath)
-        return Decision(ALLOW)
+    status, payload = markers.read_with_payload(mpath)
+    required = profile_errors = None  # discovered lazily: SKIP/no-marker paths never read profiles
+    if status == "valid":
+        required, profile_errors = _required_reviewers(git)
+        if not profile_errors and not schema.missing_reviewers(payload, required):
+            markers.consume(mpath)
+            return Decision(ALLOW)
+        # A marker that does not cover the currently required reviewer set never authorizes a
+        # commit (e.g. a project-local profile appeared after the mark). Leave it unconsumed and
+        # fall through; a complete re-mark for the same identity overwrites it.
 
     if state == "merge" and merge_forces:
-        return Decision(BLOCK, review_directive("merge conflict resolution", None))
+        if required is None:
+            required, profile_errors = _required_reviewers(git)
+        return Decision(BLOCK, review_directive("merge conflict resolution", None,
+                                                required, profile_errors))
 
     files = diffparse.parse_numstat_z(git.staged_numstat())
     result = classify(files)
     if result.action == SKIP:
         return Decision(ALLOW)
-    return Decision(BLOCK, review_directive(result.reason, files))
+    if required is None:
+        required, profile_errors = _required_reviewers(git)
+    return Decision(BLOCK, review_directive(result.reason, files, required, profile_errors))

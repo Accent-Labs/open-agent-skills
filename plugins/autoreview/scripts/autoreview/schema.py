@@ -169,6 +169,15 @@ def validate_reviewer_summary(data: dict, final_outcome: str) -> dict:
     return data
 
 
+def missing_reviewers(payload: dict, required_ids: Iterable[str]) -> List[str]:
+    """Required reviewer ids the payload's `reviewers` array does not cover."""
+    have = set()
+    for entry in payload.get("reviewers") or []:
+        if isinstance(entry, dict):
+            have.add(entry.get("reviewer"))
+    return [r for r in required_ids if r not in have]
+
+
 def validate_marker_payload(data: dict) -> dict:
     _require(isinstance(data, dict), "marker payload must be an object")
     payload = dict(data)
